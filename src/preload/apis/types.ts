@@ -83,6 +83,7 @@ export type GitCommitInfo = {
   message: string
   author: string
   date: string
+  pushed?: boolean
 }
 
 export type WorktreeInfo = {
