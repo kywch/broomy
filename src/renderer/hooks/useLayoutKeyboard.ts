@@ -17,6 +17,13 @@ interface UseLayoutKeyboardParams {
   onShowShortcuts?: () => void
   onNextTerminalTab?: () => void
   onPrevTerminalTab?: () => void
+  onExplorerTab?: (filter: string) => void
+}
+
+/** Resolve the logical key, using e.code for digits when Alt mangles e.key on Mac. */
+function resolveKey(e: KeyboardEvent): string {
+  if (e.altKey && e.code.startsWith('Digit')) return e.code.charAt(5)
+  return e.key.toLowerCase()
 }
 
 /** Build a normalized shortcut key for matching, e.g. "shift+mod:f" or "alt:arrowdown". */
@@ -25,7 +32,7 @@ function shortcutKey(e: KeyboardEvent): string {
   if (e.altKey) parts.push('alt')
   if (e.shiftKey) parts.push('shift')
   if (e.metaKey || e.ctrlKey) parts.push('mod')
-  return `${parts.join('+')}:${e.key.toLowerCase()}`
+  return `${parts.join('+')}:${resolveKey(e)}`
 }
 
 /** Like shortcutKey but ignores Shift, for shortcuts that accept both upper/lowercase. */
@@ -33,7 +40,7 @@ function shortcutKeyNoShift(e: KeyboardEvent): string {
   const parts: string[] = []
   if (e.altKey) parts.push('alt')
   if (e.metaKey || e.ctrlKey) parts.push('mod')
-  return `${parts.join('+')}:${e.key.toLowerCase()}`
+  return `${parts.join('+')}:${resolveKey(e)}`
 }
 
 export function useLayoutKeyboard({
@@ -52,6 +59,7 @@ export function useLayoutKeyboard({
   onShowShortcuts,
   onNextTerminalTab,
   onPrevTerminalTab,
+  onExplorerTab,
 }: UseLayoutKeyboardParams) {
   const [flashedPanel, setFlashedPanel] = useState<string | null>(null)
   const flashTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -144,6 +152,15 @@ export function useLayoutKeyboard({
     if (onNextTerminalTab) appWideShortcuts.set('shift+mod:]', onNextTerminalTab)
     if (onPrevTerminalTab) appWideShortcuts.set('shift+mod:[', onPrevTerminalTab)
 
+    // Explorer tab shortcuts: Cmd+Alt+1-5
+    if (onExplorerTab) {
+      const explorerFilters = ['files', 'source-control', 'search', 'recent', 'review']
+      for (let i = 0; i < explorerFilters.length; i++) {
+        const filter = explorerFilters[i]
+        appWideShortcuts.set(`alt+mod:${i + 1}`, () => onExplorerTab(filter))
+      }
+    }
+
     // Shift-insensitive shortcuts (Cmd+P works as Cmd+Shift+P too)
     const shiftInsensitiveShortcuts = new Map<string, () => void>()
     if (onSearchFiles) shiftInsensitiveShortcuts.set('mod:p', onSearchFiles)
@@ -203,6 +220,10 @@ export function useLayoutKeyboard({
     const handleCustomShowShortcuts = () => onShowShortcuts?.()
     const handleCustomNextTerminalTab = () => onNextTerminalTab?.()
     const handleCustomPrevTerminalTab = () => onPrevTerminalTab?.()
+    const handleCustomExplorerTab = (e: Event) => {
+      const detail = (e as CustomEvent<{ filter: string }>).detail
+      onExplorerTab?.(detail.filter)
+    }
 
     window.addEventListener('keydown', handleKeyDown, true)
     window.addEventListener('app:toggle-panel', handleCustomToggle)
@@ -216,6 +237,7 @@ export function useLayoutKeyboard({
     window.addEventListener('app:show-shortcuts', handleCustomShowShortcuts)
     window.addEventListener('app:next-terminal-tab', handleCustomNextTerminalTab)
     window.addEventListener('app:prev-terminal-tab', handleCustomPrevTerminalTab)
+    window.addEventListener('app:explorer-tab', handleCustomExplorerTab)
     return () => {
       window.removeEventListener('keydown', handleKeyDown, true)
       window.removeEventListener('app:toggle-panel', handleCustomToggle)
@@ -229,8 +251,9 @@ export function useLayoutKeyboard({
       window.removeEventListener('app:show-shortcuts', handleCustomShowShortcuts)
       window.removeEventListener('app:next-terminal-tab', handleCustomNextTerminalTab)
       window.removeEventListener('app:prev-terminal-tab', handleCustomPrevTerminalTab)
+      window.removeEventListener('app:explorer-tab', handleCustomExplorerTab)
     }
-  }, [handleToggleByKey, handleCyclePanel, onSearchFiles, onNewSession, onNextSession, onPrevSession, onFocusSessionList, onFocusSessionSearch, onArchiveSession, onToggleSettings, onShowShortcuts, onNextTerminalTab, onPrevTerminalTab])
+  }, [handleToggleByKey, handleCyclePanel, onSearchFiles, onNewSession, onNextSession, onPrevSession, onFocusSessionList, onFocusSessionSearch, onArchiveSession, onToggleSettings, onShowShortcuts, onNextTerminalTab, onPrevTerminalTab, onExplorerTab])
 
   return {
     flashedPanel,

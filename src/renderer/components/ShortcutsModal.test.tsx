@@ -22,6 +22,7 @@ describe('ShortcutsModal', () => {
     render(<ShortcutsModal onClose={vi.fn()} />)
     expect(screen.getByText('Panel Shortcuts')).toBeTruthy()
     expect(screen.getByText('Navigation')).toBeTruthy()
+    expect(screen.getByText('Explorer Tabs')).toBeTruthy()
     expect(screen.getByText('File Operations')).toBeTruthy()
     expect(screen.getByText('Terminal & Agent')).toBeTruthy()
     expect(screen.getByText('Debug')).toBeTruthy()

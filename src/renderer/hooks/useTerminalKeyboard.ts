@@ -28,7 +28,31 @@ const modShiftKeyEvents = new Map<string, string>([
   ['[', 'app:prev-terminal-tab'],
 ])
 
+/** Explorer tab filters indexed by Cmd+Alt+digit. */
+const explorerTabFilters = new Map<string, string>([
+  ['1', 'files'],
+  ['2', 'source-control'],
+  ['3', 'search'],
+  ['4', 'recent'],
+  ['5', 'review'],
+])
+
+/** Resolve the digit from e.code when Alt mangles e.key on Mac. */
+function resolveDigit(e: KeyboardEvent): string | null {
+  if (e.code.startsWith('Digit')) return e.code.charAt(5)
+  return null
+}
+
 function handleModKeyShortcuts(e: KeyboardEvent): boolean | null {
+  // Cmd+Alt+1-5: explorer tab shortcuts (use e.code because Alt mangles e.key on Mac)
+  if (e.altKey) {
+    const digit = resolveDigit(e)
+    if (digit && explorerTabFilters.has(digit)) {
+      window.dispatchEvent(new CustomEvent('app:explorer-tab', { detail: { filter: explorerTabFilters.get(digit) } }))
+      return false
+    }
+  }
+
   if (['1', '2', '3', '4', '5'].includes(e.key)) {
     window.dispatchEvent(new CustomEvent('app:toggle-panel', { detail: { key: e.key } }))
     return false

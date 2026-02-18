@@ -71,6 +71,7 @@ interface LayoutProps {
   onShowShortcuts?: () => void
   onNextTerminalTab?: () => void
   onPrevTerminalTab?: () => void
+  onExplorerTab?: (filter: string) => void
 }
 
 export default function Layout({
@@ -99,6 +100,7 @@ export default function Layout({
   onShowShortcuts,
   onNextTerminalTab,
   onPrevTerminalTab,
+  onExplorerTab,
 }: LayoutProps) {
   const [isDev, setIsDev] = useState(false)
   const { registry, toolbarPanels, getShortcutKey } = usePanelContext()
@@ -163,6 +165,7 @@ export default function Layout({
     onShowShortcuts,
     onNextTerminalTab,
     onPrevTerminalTab,
+    onExplorerTab,
   })
 
   // Get toolbar panels info with visibility status

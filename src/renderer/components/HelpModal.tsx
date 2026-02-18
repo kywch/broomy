@@ -23,6 +23,11 @@ const shortcutSections = [
     ['Cycle Panels Forward', 'Ctrl+Tab'], ['Cycle Panels Backward', 'Ctrl+Shift+Tab'],
     ['Toggle Settings', `${modKey}+,`], ['Show Shortcuts', `${modKey}+/`],
   ]},
+  { title: 'Explorer Tabs', items: [
+    ['Files', `${modKey}+${isMac ? 'Option' : 'Alt'}+1`], ['Source Control', `${modKey}+${isMac ? 'Option' : 'Alt'}+2`],
+    ['Search', `${modKey}+${isMac ? 'Option' : 'Alt'}+3`], ['Recent Files', `${modKey}+${isMac ? 'Option' : 'Alt'}+4`],
+    ['Review', `${modKey}+${isMac ? 'Option' : 'Alt'}+5`],
+  ]},
   { title: 'File Operations', items: [['Save File', `${modKey}+S`], ['Search Files', `${modKey}+P`]] },
   { title: 'Terminal & Agent', items: [
     ['Next Terminal Tab', `${modKey}+Shift+]`],

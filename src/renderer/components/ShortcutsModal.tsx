@@ -43,6 +43,16 @@ const shortcutGroups: ShortcutGroup[] = [
     ],
   },
   {
+    title: 'Explorer Tabs',
+    shortcuts: [
+      { label: 'Files', keys: `${modKey}+${isMac ? 'Option' : 'Alt'}+1` },
+      { label: 'Source Control', keys: `${modKey}+${isMac ? 'Option' : 'Alt'}+2` },
+      { label: 'Search', keys: `${modKey}+${isMac ? 'Option' : 'Alt'}+3` },
+      { label: 'Recent Files', keys: `${modKey}+${isMac ? 'Option' : 'Alt'}+4` },
+      { label: 'Review', keys: `${modKey}+${isMac ? 'Option' : 'Alt'}+5` },
+    ],
+  },
+  {
     title: 'File Operations',
     shortcuts: [
       { label: 'Save File', keys: `${modKey}+S` },

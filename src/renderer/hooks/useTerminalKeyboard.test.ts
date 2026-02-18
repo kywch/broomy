@@ -301,6 +301,28 @@ describe('useTerminalKeyboard', () => {
       expect(dispatchSpy).toHaveBeenCalledWith(expect.objectContaining({ type: 'app:prev-terminal-tab' }))
       dispatchSpy.mockRestore()
     })
+
+    it('Cmd+Alt+1 dispatches app:explorer-tab with files and returns false', () => {
+      const dispatchSpy = vi.spyOn(window, 'dispatchEvent')
+      const { result } = renderHook(() => useTerminalKeyboard(ptyIdRef))
+      const event = makeKeyEvent({ key: '¡', metaKey: true, altKey: true, type: 'keydown', code: 'Digit1' } as Partial<KeyboardEvent> & { key: string })
+      expect(result.current(event)).toBe(false)
+      expect(dispatchSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'app:explorer-tab', detail: { filter: 'files' } }),
+      )
+      dispatchSpy.mockRestore()
+    })
+
+    it('Cmd+Alt+3 dispatches app:explorer-tab with search and returns false', () => {
+      const dispatchSpy = vi.spyOn(window, 'dispatchEvent')
+      const { result } = renderHook(() => useTerminalKeyboard(ptyIdRef))
+      const event = makeKeyEvent({ key: '#', metaKey: true, altKey: true, type: 'keydown', code: 'Digit3' } as Partial<KeyboardEvent> & { key: string })
+      expect(result.current(event)).toBe(false)
+      expect(dispatchSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'app:explorer-tab', detail: { filter: 'search' } }),
+      )
+      dispatchSpy.mockRestore()
+    })
   })
 
   describe('regular keys', () => {

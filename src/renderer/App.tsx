@@ -200,6 +200,19 @@ function AppContent() {
     setExplorerFilter(activeSessionId, 'search')
   }, [activeSessionId, activeSession, togglePanel, setExplorerFilter])
 
+  const handleExplorerTab = useCallback((filter: string) => {
+    if (!activeSessionId) return
+    if (!activeSession?.panelVisibility[PANEL_IDS.EXPLORER]) togglePanel(activeSessionId, PANEL_IDS.EXPLORER)
+    setExplorerFilter(activeSessionId, filter as Parameters<typeof setExplorerFilter>[1])
+    // Auto-focus search input when switching to search tab
+    if (filter === 'search') {
+      requestAnimationFrame(() => {
+        const input = document.querySelector<HTMLInputElement>('[data-explorer-search]')
+        input?.focus()
+      })
+    }
+  }, [activeSessionId, activeSession, togglePanel, setExplorerFilter])
+
   const handleToggleGlobalPanel = useCallback((panelId: string) => {
     toggleGlobalPanel(panelId)
   }, [toggleGlobalPanel])
@@ -257,6 +270,7 @@ function AppContent() {
         onShowShortcuts={handleShowShortcuts}
         onNextTerminalTab={handleNextTerminalTab}
         onPrevTerminalTab={handlePrevTerminalTab}
+        onExplorerTab={handleExplorerTab}
       />
 
       {/* New Session Dialog */}

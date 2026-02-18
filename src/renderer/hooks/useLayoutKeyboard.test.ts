@@ -29,6 +29,7 @@ describe('useLayoutKeyboard', () => {
   const onShowShortcuts = vi.fn()
   const onNextTerminalTab = vi.fn()
   const onPrevTerminalTab = vi.fn()
+  const onExplorerTab = vi.fn()
 
   const defaultProps = {
     toolbarPanels: ['sidebar', 'explorer', 'fileViewer', 'tutorial', 'settings'],
@@ -52,6 +53,7 @@ describe('useLayoutKeyboard', () => {
     onShowShortcuts,
     onNextTerminalTab,
     onPrevTerminalTab,
+    onExplorerTab,
   }
 
   beforeEach(() => {
@@ -580,6 +582,40 @@ describe('useLayoutKeyboard', () => {
     })
   })
 
+  describe('explorer tab shortcuts', () => {
+    it('Cmd+Alt+1 calls onExplorerTab with files', () => {
+      renderHook(() => useLayoutKeyboard(defaultProps))
+      act(() => {
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: '¡', code: 'Digit1', metaKey: true, altKey: true, bubbles: true }))
+      })
+      expect(onExplorerTab).toHaveBeenCalledWith('files')
+    })
+
+    it('Cmd+Alt+3 calls onExplorerTab with search', () => {
+      renderHook(() => useLayoutKeyboard(defaultProps))
+      act(() => {
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: '£', code: 'Digit3', metaKey: true, altKey: true, bubbles: true }))
+      })
+      expect(onExplorerTab).toHaveBeenCalledWith('search')
+    })
+
+    it('Cmd+Alt+5 calls onExplorerTab with review', () => {
+      renderHook(() => useLayoutKeyboard(defaultProps))
+      act(() => {
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: '∞', code: 'Digit5', metaKey: true, altKey: true, bubbles: true }))
+      })
+      expect(onExplorerTab).toHaveBeenCalledWith('review')
+    })
+
+    it('app:explorer-tab custom event triggers onExplorerTab', () => {
+      renderHook(() => useLayoutKeyboard(defaultProps))
+      act(() => {
+        window.dispatchEvent(new CustomEvent('app:explorer-tab', { detail: { filter: 'source-control' } }))
+      })
+      expect(onExplorerTab).toHaveBeenCalledWith('source-control')
+    })
+  })
+
   describe('custom events for new shortcuts', () => {
     it('app:new-session triggers onNewSession', () => {
       renderHook(() => useLayoutKeyboard(defaultProps))
@@ -650,6 +686,7 @@ describe('useLayoutKeyboard', () => {
       expect(addSpy).toHaveBeenCalledWith('app:show-shortcuts', expect.any(Function))
       expect(addSpy).toHaveBeenCalledWith('app:next-terminal-tab', expect.any(Function))
       expect(addSpy).toHaveBeenCalledWith('app:prev-terminal-tab', expect.any(Function))
+      expect(addSpy).toHaveBeenCalledWith('app:explorer-tab', expect.any(Function))
 
       unmount()
 
@@ -666,6 +703,7 @@ describe('useLayoutKeyboard', () => {
       expect(removeSpy).toHaveBeenCalledWith('app:show-shortcuts', expect.any(Function))
       expect(removeSpy).toHaveBeenCalledWith('app:next-terminal-tab', expect.any(Function))
       expect(removeSpy).toHaveBeenCalledWith('app:prev-terminal-tab', expect.any(Function))
+      expect(removeSpy).toHaveBeenCalledWith('app:explorer-tab', expect.any(Function))
 
       addSpy.mockRestore()
       removeSpy.mockRestore()
