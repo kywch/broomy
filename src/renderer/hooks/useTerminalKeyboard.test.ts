@@ -283,6 +283,24 @@ describe('useTerminalKeyboard', () => {
       expect(dispatchSpy).toHaveBeenCalledWith(expect.objectContaining({ type: 'app:prev-session' }))
       dispatchSpy.mockRestore()
     })
+
+    it('Cmd+Shift+] dispatches app:next-terminal-tab and returns false', () => {
+      const dispatchSpy = vi.spyOn(window, 'dispatchEvent')
+      const { result } = renderHook(() => useTerminalKeyboard(ptyIdRef))
+      const event = makeKeyEvent({ key: ']', metaKey: true, shiftKey: true, type: 'keydown' })
+      expect(result.current(event)).toBe(false)
+      expect(dispatchSpy).toHaveBeenCalledWith(expect.objectContaining({ type: 'app:next-terminal-tab' }))
+      dispatchSpy.mockRestore()
+    })
+
+    it('Cmd+Shift+[ dispatches app:prev-terminal-tab and returns false', () => {
+      const dispatchSpy = vi.spyOn(window, 'dispatchEvent')
+      const { result } = renderHook(() => useTerminalKeyboard(ptyIdRef))
+      const event = makeKeyEvent({ key: '[', metaKey: true, shiftKey: true, type: 'keydown' })
+      expect(result.current(event)).toBe(false)
+      expect(dispatchSpy).toHaveBeenCalledWith(expect.objectContaining({ type: 'app:prev-terminal-tab' }))
+      dispatchSpy.mockRestore()
+    })
   })
 
   describe('regular keys', () => {

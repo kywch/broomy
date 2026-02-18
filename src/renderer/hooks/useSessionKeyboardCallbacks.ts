@@ -2,6 +2,8 @@ import { useCallback } from 'react'
 import { PANEL_IDS } from '../panels'
 import type { Session } from '../store/sessions'
 
+const AGENT_TAB_ID = '__agent__'
+
 interface SessionKeyboardCallbacksDeps {
   sessions: Session[]
   activeSessionId: string | null
@@ -11,6 +13,7 @@ interface SessionKeyboardCallbacksDeps {
   unarchiveSession: (id: string) => void
   handleSelectSession: (id: string) => void
   setShowShortcutsModal: (show: boolean) => void
+  setActiveTerminalTab: (sessionId: string, tabId: string) => void
 }
 
 export function useSessionKeyboardCallbacks({
@@ -22,6 +25,7 @@ export function useSessionKeyboardCallbacks({
   unarchiveSession,
   handleSelectSession,
   setShowShortcutsModal,
+  setActiveTerminalTab,
 }: SessionKeyboardCallbacksDeps) {
   const handleNextSession = useCallback(() => {
     const active = sessions.filter((s) => !s.isArchived)
@@ -83,6 +87,22 @@ export function useSessionKeyboardCallbacks({
     setShowShortcutsModal(true)
   }, [setShowShortcutsModal])
 
+  const cycleTerminalTab = useCallback((direction: 1 | -1) => {
+    if (!activeSessionId) return
+    const session = sessions.find((s) => s.id === activeSessionId)
+    if (!session) return
+    const userTabs = session.terminalTabs.tabs
+    const allTabIds = [AGENT_TAB_ID, ...userTabs.map((t) => t.id)]
+    if (allTabIds.length <= 1) return
+    const currentId = session.terminalTabs.activeTabId ?? AGENT_TAB_ID
+    const currentIndex = allTabIds.indexOf(currentId)
+    const nextIndex = (currentIndex + direction + allTabIds.length) % allTabIds.length
+    setActiveTerminalTab(activeSessionId, allTabIds[nextIndex])
+  }, [activeSessionId, sessions, setActiveTerminalTab])
+
+  const handleNextTerminalTab = useCallback(() => cycleTerminalTab(1), [cycleTerminalTab])
+  const handlePrevTerminalTab = useCallback(() => cycleTerminalTab(-1), [cycleTerminalTab])
+
   return {
     handleNextSession,
     handlePrevSession,
@@ -91,5 +111,7 @@ export function useSessionKeyboardCallbacks({
     handleArchiveSession,
     handleToggleSettings,
     handleShowShortcuts,
+    handleNextTerminalTab,
+    handlePrevTerminalTab,
   }
 }

@@ -69,6 +69,8 @@ interface LayoutProps {
   onArchiveSession?: () => void
   onToggleSettings?: () => void
   onShowShortcuts?: () => void
+  onNextTerminalTab?: () => void
+  onPrevTerminalTab?: () => void
 }
 
 export default function Layout({
@@ -95,6 +97,8 @@ export default function Layout({
   onArchiveSession,
   onToggleSettings,
   onShowShortcuts,
+  onNextTerminalTab,
+  onPrevTerminalTab,
 }: LayoutProps) {
   const [isDev, setIsDev] = useState(false)
   const { registry, toolbarPanels, getShortcutKey } = usePanelContext()
@@ -157,6 +161,8 @@ export default function Layout({
     onArchiveSession,
     onToggleSettings,
     onShowShortcuts,
+    onNextTerminalTab,
+    onPrevTerminalTab,
   })
 
   // Get toolbar panels info with visibility status

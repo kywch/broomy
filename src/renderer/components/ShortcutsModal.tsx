@@ -29,9 +29,8 @@ const shortcutGroups: ShortcutGroup[] = [
       { label: 'Toggle Sessions', keys: `${modKey}+1` },
       { label: 'Toggle Explorer', keys: `${modKey}+2` },
       { label: 'Toggle File Viewer', keys: `${modKey}+3` },
-      { label: 'Toggle Agent', keys: `${modKey}+4` },
-      { label: 'Toggle Terminal', keys: `${modKey}+5` },
-      { label: 'Toggle Guide', keys: `${modKey}+6` },
+      { label: 'Toggle Guide', keys: `${modKey}+4` },
+      { label: 'Toggle Settings', keys: `${modKey}+5` },
     ],
   },
   {
@@ -53,6 +52,8 @@ const shortcutGroups: ShortcutGroup[] = [
   {
     title: 'Terminal & Agent',
     shortcuts: [
+      { label: 'Next Terminal Tab', keys: `${modKey}+Shift+]` },
+      { label: 'Previous Terminal Tab', keys: `${modKey}+Shift+[` },
       { label: 'New Line (without submitting)', keys: 'Shift+Enter' },
       { label: 'Move to Start/End of Line', keys: `${modKey}+Left / ${modKey}+Right` },
       { label: 'Delete to Start of Line', keys: `${modKey}+Delete` },

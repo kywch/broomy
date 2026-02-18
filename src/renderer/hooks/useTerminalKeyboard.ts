@@ -24,6 +24,8 @@ const modKeyEvents = new Map<string, string>([
 const modShiftKeyEvents = new Map<string, string>([
   ['f', 'app:focus-session-search'],
   ['a', 'app:archive-session'],
+  [']', 'app:next-terminal-tab'],
+  ['[', 'app:prev-terminal-tab'],
 ])
 
 function handleModKeyShortcuts(e: KeyboardEvent): boolean | null {

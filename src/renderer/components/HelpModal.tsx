@@ -17,7 +17,7 @@ const shortcutSections = [
   ]},
   { title: 'Panel Shortcuts', items: [
     ['Toggle Sessions', `${modKey}+1`], ['Toggle Explorer', `${modKey}+2`], ['Toggle File Viewer', `${modKey}+3`],
-    ['Toggle Agent', `${modKey}+4`], ['Toggle Terminal', `${modKey}+5`], ['Toggle Guide', `${modKey}+6`],
+    ['Toggle Guide', `${modKey}+4`], ['Toggle Settings', `${modKey}+5`],
   ]},
   { title: 'Navigation', items: [
     ['Cycle Panels Forward', 'Ctrl+Tab'], ['Cycle Panels Backward', 'Ctrl+Shift+Tab'],
@@ -25,6 +25,8 @@ const shortcutSections = [
   ]},
   { title: 'File Operations', items: [['Save File', `${modKey}+S`], ['Search Files', `${modKey}+P`]] },
   { title: 'Terminal & Agent', items: [
+    ['Next Terminal Tab', `${modKey}+Shift+]`],
+    ['Previous Terminal Tab', `${modKey}+Shift+[`],
     ['New Line (without submitting)', 'Shift+Enter'],
     ['Move to Start/End of Line', `${modKey}+Left / ${modKey}+Right`],
     ['Delete to Start of Line', `${modKey}+Delete`],

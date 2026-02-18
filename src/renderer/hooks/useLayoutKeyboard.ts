@@ -15,6 +15,8 @@ interface UseLayoutKeyboardParams {
   onArchiveSession?: () => void
   onToggleSettings?: () => void
   onShowShortcuts?: () => void
+  onNextTerminalTab?: () => void
+  onPrevTerminalTab?: () => void
 }
 
 /** Build a normalized shortcut key for matching, e.g. "shift+mod:f" or "alt:arrowdown". */
@@ -48,6 +50,8 @@ export function useLayoutKeyboard({
   onArchiveSession,
   onToggleSettings,
   onShowShortcuts,
+  onNextTerminalTab,
+  onPrevTerminalTab,
 }: UseLayoutKeyboardParams) {
   const [flashedPanel, setFlashedPanel] = useState<string | null>(null)
   const flashTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -57,8 +61,11 @@ export function useLayoutKeyboard({
     const container = document.querySelector(`[data-panel-id="${panelId}"]`)
     if (!container) return
 
-    const xtermTextarea = container.querySelector<HTMLElement>('.xterm-helper-textarea')
-    if (xtermTextarea) { xtermTextarea.focus(); return }
+    // For xterm: find a visible textarea (hidden tabs have display:none parents)
+    const xtermTextareas = container.querySelectorAll<HTMLElement>('.xterm-helper-textarea')
+    for (const ta of xtermTextareas) {
+      if (ta.offsetParent !== null) { ta.focus(); return }
+    }
 
     const monacoTextarea = container.querySelector<HTMLElement>('textarea.inputarea')
     if (monacoTextarea) { monacoTextarea.focus(); return }
@@ -85,6 +92,12 @@ export function useLayoutKeyboard({
       return !!panels[id]
     })
 
+    // Terminal is always visible but not in toolbarPanels — insert after file viewer
+    if (panels.terminal) {
+      const insertAfter = visiblePanels.indexOf(PANEL_IDS.FILE_VIEWER)
+      visiblePanels.splice(insertAfter !== -1 ? insertAfter + 1 : visiblePanels.length, 0, 'terminal')
+    }
+
     if (visiblePanels.length === 0) return
 
     const current = getCurrentPanel() || lastCyclePanelRef.current
@@ -101,6 +114,7 @@ export function useLayoutKeyboard({
 
     const targetPanel = visiblePanels[nextIndex]
     lastCyclePanelRef.current = targetPanel
+
     focusPanel(targetPanel)
 
     setFlashedPanel(targetPanel)
@@ -127,6 +141,8 @@ export function useLayoutKeyboard({
     if (onShowShortcuts) appWideShortcuts.set('mod:/', onShowShortcuts)
     if (onPrevSession) appWideShortcuts.set('alt:arrowup', onPrevSession)
     if (onNextSession) appWideShortcuts.set('alt:arrowdown', onNextSession)
+    if (onNextTerminalTab) appWideShortcuts.set('shift+mod:]', onNextTerminalTab)
+    if (onPrevTerminalTab) appWideShortcuts.set('shift+mod:[', onPrevTerminalTab)
 
     // Shift-insensitive shortcuts (Cmd+P works as Cmd+Shift+P too)
     const shiftInsensitiveShortcuts = new Map<string, () => void>()
@@ -185,6 +201,8 @@ export function useLayoutKeyboard({
     const handleCustomArchiveSession = () => onArchiveSession?.()
     const handleCustomToggleSettings = () => onToggleSettings?.()
     const handleCustomShowShortcuts = () => onShowShortcuts?.()
+    const handleCustomNextTerminalTab = () => onNextTerminalTab?.()
+    const handleCustomPrevTerminalTab = () => onPrevTerminalTab?.()
 
     window.addEventListener('keydown', handleKeyDown, true)
     window.addEventListener('app:toggle-panel', handleCustomToggle)
@@ -196,6 +214,8 @@ export function useLayoutKeyboard({
     window.addEventListener('app:archive-session', handleCustomArchiveSession)
     window.addEventListener('app:toggle-settings', handleCustomToggleSettings)
     window.addEventListener('app:show-shortcuts', handleCustomShowShortcuts)
+    window.addEventListener('app:next-terminal-tab', handleCustomNextTerminalTab)
+    window.addEventListener('app:prev-terminal-tab', handleCustomPrevTerminalTab)
     return () => {
       window.removeEventListener('keydown', handleKeyDown, true)
       window.removeEventListener('app:toggle-panel', handleCustomToggle)
@@ -207,8 +227,10 @@ export function useLayoutKeyboard({
       window.removeEventListener('app:archive-session', handleCustomArchiveSession)
       window.removeEventListener('app:toggle-settings', handleCustomToggleSettings)
       window.removeEventListener('app:show-shortcuts', handleCustomShowShortcuts)
+      window.removeEventListener('app:next-terminal-tab', handleCustomNextTerminalTab)
+      window.removeEventListener('app:prev-terminal-tab', handleCustomPrevTerminalTab)
     }
-  }, [handleToggleByKey, handleCyclePanel, onSearchFiles, onNewSession, onNextSession, onPrevSession, onFocusSessionList, onFocusSessionSearch, onArchiveSession, onToggleSettings, onShowShortcuts])
+  }, [handleToggleByKey, handleCyclePanel, onSearchFiles, onNewSession, onNextSession, onPrevSession, onFocusSessionList, onFocusSessionSearch, onArchiveSession, onToggleSettings, onShowShortcuts, onNextTerminalTab, onPrevTerminalTab])
 
   return {
     flashedPanel,

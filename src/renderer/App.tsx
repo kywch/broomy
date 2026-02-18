@@ -183,12 +183,15 @@ function AppContent() {
     onSessionAlreadyExists: setDuplicateSessionInfo,
   })
 
+  const setActiveTerminalTab = useSessionStore((state) => state.setActiveTerminalTab)
   const {
     handleNextSession, handlePrevSession, handleFocusSessionList,
     handleFocusSessionSearch, handleArchiveSession, handleToggleSettings, handleShowShortcuts,
+    handleNextTerminalTab, handlePrevTerminalTab,
   } = useSessionKeyboardCallbacks({
     sessions, activeSessionId: activeSessionId ?? null, globalPanelVisibility,
     toggleGlobalPanel, archiveSession, unarchiveSession, handleSelectSession, setShowShortcutsModal,
+    setActiveTerminalTab,
   })
 
   const handleSearchFiles = useCallback(() => {
@@ -252,6 +255,8 @@ function AppContent() {
         onArchiveSession={handleArchiveSession}
         onToggleSettings={handleToggleSettings}
         onShowShortcuts={handleShowShortcuts}
+        onNextTerminalTab={handleNextTerminalTab}
+        onPrevTerminalTab={handlePrevTerminalTab}
       />
 
       {/* New Session Dialog */}
