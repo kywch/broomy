@@ -211,6 +211,80 @@ describe('useTerminalKeyboard', () => {
     })
   })
 
+  describe('new app-wide shortcuts from terminal', () => {
+    it('Cmd+N dispatches app:new-session and returns false', () => {
+      const dispatchSpy = vi.spyOn(window, 'dispatchEvent')
+      const { result } = renderHook(() => useTerminalKeyboard(ptyIdRef))
+      const event = makeKeyEvent({ key: 'n', metaKey: true, type: 'keydown' })
+      expect(result.current(event)).toBe(false)
+      expect(dispatchSpy).toHaveBeenCalledWith(expect.objectContaining({ type: 'app:new-session' }))
+      dispatchSpy.mockRestore()
+    })
+
+    it('Cmd+J dispatches app:focus-sessions and returns false', () => {
+      const dispatchSpy = vi.spyOn(window, 'dispatchEvent')
+      const { result } = renderHook(() => useTerminalKeyboard(ptyIdRef))
+      const event = makeKeyEvent({ key: 'j', metaKey: true, type: 'keydown' })
+      expect(result.current(event)).toBe(false)
+      expect(dispatchSpy).toHaveBeenCalledWith(expect.objectContaining({ type: 'app:focus-sessions' }))
+      dispatchSpy.mockRestore()
+    })
+
+    it('Cmd+Shift+F dispatches app:focus-session-search and returns false', () => {
+      const dispatchSpy = vi.spyOn(window, 'dispatchEvent')
+      const { result } = renderHook(() => useTerminalKeyboard(ptyIdRef))
+      const event = makeKeyEvent({ key: 'f', metaKey: true, shiftKey: true, type: 'keydown' })
+      expect(result.current(event)).toBe(false)
+      expect(dispatchSpy).toHaveBeenCalledWith(expect.objectContaining({ type: 'app:focus-session-search' }))
+      dispatchSpy.mockRestore()
+    })
+
+    it('Cmd+Shift+A dispatches app:archive-session and returns false', () => {
+      const dispatchSpy = vi.spyOn(window, 'dispatchEvent')
+      const { result } = renderHook(() => useTerminalKeyboard(ptyIdRef))
+      const event = makeKeyEvent({ key: 'a', metaKey: true, shiftKey: true, type: 'keydown' })
+      expect(result.current(event)).toBe(false)
+      expect(dispatchSpy).toHaveBeenCalledWith(expect.objectContaining({ type: 'app:archive-session' }))
+      dispatchSpy.mockRestore()
+    })
+
+    it('Cmd+, dispatches app:toggle-settings and returns false', () => {
+      const dispatchSpy = vi.spyOn(window, 'dispatchEvent')
+      const { result } = renderHook(() => useTerminalKeyboard(ptyIdRef))
+      const event = makeKeyEvent({ key: ',', metaKey: true, type: 'keydown' })
+      expect(result.current(event)).toBe(false)
+      expect(dispatchSpy).toHaveBeenCalledWith(expect.objectContaining({ type: 'app:toggle-settings' }))
+      dispatchSpy.mockRestore()
+    })
+
+    it('Cmd+/ dispatches app:show-shortcuts and returns false', () => {
+      const dispatchSpy = vi.spyOn(window, 'dispatchEvent')
+      const { result } = renderHook(() => useTerminalKeyboard(ptyIdRef))
+      const event = makeKeyEvent({ key: '/', metaKey: true, type: 'keydown' })
+      expect(result.current(event)).toBe(false)
+      expect(dispatchSpy).toHaveBeenCalledWith(expect.objectContaining({ type: 'app:show-shortcuts' }))
+      dispatchSpy.mockRestore()
+    })
+
+    it('Alt+Down dispatches app:next-session and returns false', () => {
+      const dispatchSpy = vi.spyOn(window, 'dispatchEvent')
+      const { result } = renderHook(() => useTerminalKeyboard(ptyIdRef))
+      const event = makeKeyEvent({ key: 'ArrowDown', altKey: true, type: 'keydown' })
+      expect(result.current(event)).toBe(false)
+      expect(dispatchSpy).toHaveBeenCalledWith(expect.objectContaining({ type: 'app:next-session' }))
+      dispatchSpy.mockRestore()
+    })
+
+    it('Alt+Up dispatches app:prev-session and returns false', () => {
+      const dispatchSpy = vi.spyOn(window, 'dispatchEvent')
+      const { result } = renderHook(() => useTerminalKeyboard(ptyIdRef))
+      const event = makeKeyEvent({ key: 'ArrowUp', altKey: true, type: 'keydown' })
+      expect(result.current(event)).toBe(false)
+      expect(dispatchSpy).toHaveBeenCalledWith(expect.objectContaining({ type: 'app:prev-session' }))
+      dispatchSpy.mockRestore()
+    })
+  })
+
   describe('regular keys', () => {
     it('returns true for regular keydown events (letting xterm handle them)', () => {
       const { result } = renderHook(() => useTerminalKeyboard(ptyIdRef))

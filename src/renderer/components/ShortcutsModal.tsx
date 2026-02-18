@@ -13,6 +13,17 @@ interface ShortcutGroup {
 
 const shortcutGroups: ShortcutGroup[] = [
   {
+    title: 'Session Management',
+    shortcuts: [
+      { label: 'New Session', keys: `${modKey}+N` },
+      { label: 'Focus Session List', keys: `${modKey}+J` },
+      { label: 'Session Search', keys: `${modKey}+Shift+F` },
+      { label: 'Next Session', keys: 'Alt+Down' },
+      { label: 'Previous Session', keys: 'Alt+Up' },
+      { label: 'Archive/Unarchive Session', keys: `${modKey}+Shift+A` },
+    ],
+  },
+  {
     title: 'Panel Shortcuts',
     shortcuts: [
       { label: 'Toggle Sessions', keys: `${modKey}+1` },
@@ -28,6 +39,8 @@ const shortcutGroups: ShortcutGroup[] = [
     shortcuts: [
       { label: 'Cycle Panels Forward', keys: 'Ctrl+Tab' },
       { label: 'Cycle Panels Backward', keys: 'Ctrl+Shift+Tab' },
+      { label: 'Toggle Settings', keys: `${modKey}+,` },
+      { label: 'Show Shortcuts', keys: `${modKey}+/` },
     ],
   },
   {
@@ -43,6 +56,21 @@ const shortcutGroups: ShortcutGroup[] = [
       { label: 'New Line (without submitting)', keys: 'Shift+Enter' },
       { label: 'Move to Start/End of Line', keys: `${modKey}+Left / ${modKey}+Right` },
       { label: 'Delete to Start of Line', keys: `${modKey}+Delete` },
+    ],
+  },
+  {
+    title: 'New Session Dialog',
+    shortcuts: [
+      { label: 'Clone', keys: 'C' },
+      { label: 'Add Repo', keys: 'A' },
+      { label: 'Open Folder', keys: 'F' },
+      { label: 'New Branch', keys: 'N' },
+      { label: 'Existing Branch', keys: 'E' },
+      { label: 'Issues', keys: 'I' },
+      { label: 'Review PRs', keys: 'R' },
+      { label: 'Open Main', keys: 'O' },
+      { label: 'Navigate Repos', keys: 'Arrow Up/Down' },
+      { label: 'Close / Back', keys: 'Escape' },
     ],
   },
   {
