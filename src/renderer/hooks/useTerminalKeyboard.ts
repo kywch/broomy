@@ -3,7 +3,7 @@ import { useCallback } from 'react'
 /**
  * Returns a custom key event handler for xterm.js terminals.
  * Handles Shift+Enter, Cmd+Left/Right (home/end), Cmd+Backspace (kill line),
- * Cmd/Ctrl+1-6 panel toggle shortcuts, and app-wide shortcuts that dispatch
+ * Cmd/Ctrl+1-5 panel toggle shortcuts, and app-wide shortcuts that dispatch
  * CustomEvents so useLayoutKeyboard can handle them.
  */
 
@@ -27,7 +27,7 @@ const modShiftKeyEvents = new Map<string, string>([
 ])
 
 function handleModKeyShortcuts(e: KeyboardEvent): boolean | null {
-  if (['1', '2', '3', '4', '5', '6'].includes(e.key)) {
+  if (['1', '2', '3', '4', '5'].includes(e.key)) {
     window.dispatchEvent(new CustomEvent('app:toggle-panel', { detail: { key: e.key } }))
     return false
   }

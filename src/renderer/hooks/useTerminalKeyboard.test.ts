@@ -144,7 +144,7 @@ describe('useTerminalKeyboard', () => {
     })
   })
 
-  describe('Cmd/Ctrl+1-6 panel toggle shortcuts', () => {
+  describe('Cmd/Ctrl+1-5 panel toggle shortcuts', () => {
     it('dispatches app:toggle-panel event for Cmd+1 and returns false', () => {
       const dispatchSpy = vi.spyOn(window, 'dispatchEvent')
       const { result } = renderHook(() => useTerminalKeyboard(ptyIdRef))
@@ -177,11 +177,11 @@ describe('useTerminalKeyboard', () => {
       dispatchSpy.mockRestore()
     })
 
-    it('dispatches for each of keys 1-6', () => {
+    it('dispatches for each of keys 1-5', () => {
       const dispatchSpy = vi.spyOn(window, 'dispatchEvent')
       const { result } = renderHook(() => useTerminalKeyboard(ptyIdRef))
 
-      for (const key of ['1', '2', '3', '4', '5', '6']) {
+      for (const key of ['1', '2', '3', '4', '5']) {
         dispatchSpy.mockClear()
         const event = makeKeyEvent({ key, metaKey: true, type: 'keydown' })
         const handled = result.current(event)
@@ -197,10 +197,10 @@ describe('useTerminalKeyboard', () => {
       dispatchSpy.mockRestore()
     })
 
-    it('does not handle Cmd+7 (outside 1-6 range)', () => {
+    it('does not handle Cmd+6 (outside 1-5 range)', () => {
       const dispatchSpy = vi.spyOn(window, 'dispatchEvent')
       const { result } = renderHook(() => useTerminalKeyboard(ptyIdRef))
-      const event = makeKeyEvent({ key: '7', metaKey: true, type: 'keydown' })
+      const event = makeKeyEvent({ key: '6', metaKey: true, type: 'keydown' })
       const handled = result.current(event)
 
       expect(handled).toBe(true)

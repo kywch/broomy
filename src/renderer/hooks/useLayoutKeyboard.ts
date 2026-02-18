@@ -164,7 +164,7 @@ export function useLayoutKeyboard({
       if (!(e.metaKey || e.ctrlKey)) return
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
 
-      if (['1', '2', '3', '4', '5', '6'].includes(e.key)) {
+      if (['1', '2', '3', '4', '5'].includes(e.key)) {
         e.preventDefault()
         e.stopPropagation()
         handleToggleByKey(e.key)
