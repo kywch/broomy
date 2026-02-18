@@ -43,17 +43,6 @@ export default function VersionIndicator() {
     }
   }, [])
 
-  const handleCheckForUpdates = useCallback(async () => {
-    const result = await window.update.checkForUpdates()
-    if (result.updateAvailable && result.version) {
-      setUpdateState({
-        status: 'available',
-        version: result.version,
-        releaseNotes: result.releaseNotes,
-      })
-    }
-  }, [])
-
   const handleDownload = useCallback(async () => {
     setUpdateState({ status: 'downloading', percent: 0 })
     await window.update.downloadUpdate()
@@ -63,25 +52,17 @@ export default function VersionIndicator() {
     window.update.installUpdate()
   }, [])
 
-  if (!version) return null
-
-  const hasUpdate = updateState.status !== 'idle'
+  if (!version || updateState.status === 'idle') return null
 
   return (
     <div className="relative">
       <button
         onClick={() => setShowPopover(!showPopover)}
-        className={`px-1.5 py-0.5 text-[10px] font-medium rounded transition-colors ${
-          hasUpdate
-            ? 'bg-accent/20 text-accent border border-accent/30 hover:bg-accent/30'
-            : 'text-text-tertiary hover:text-text-secondary'
-        }`}
-        title={hasUpdate ? 'Update available' : `Broomy v${version}`}
+        className="px-1.5 py-0.5 text-[10px] font-medium rounded transition-colors bg-accent/20 text-accent border border-accent/30 hover:bg-accent/30"
+        title="Update available"
       >
-        v{version}
-        {hasUpdate && (
-          <span className="ml-1 inline-block w-1.5 h-1.5 rounded-full bg-accent" />
-        )}
+        Update
+        <span className="ml-1 inline-block w-1.5 h-1.5 rounded-full bg-accent" />
       </button>
 
       {showPopover && (
@@ -91,18 +72,6 @@ export default function VersionIndicator() {
           <div className="absolute right-0 top-full mt-1 z-50 w-64 bg-bg-secondary border border-border rounded-lg shadow-xl p-3">
             <div className="text-xs text-text-secondary mb-1">Current version</div>
             <div className="text-sm font-medium text-text-primary mb-3">v{version}</div>
-
-            {updateState.status === 'idle' && (
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-text-tertiary">Up to date</span>
-                <button
-                  onClick={handleCheckForUpdates}
-                  className="text-xs text-accent hover:underline"
-                >
-                  Check for updates
-                </button>
-              </div>
-            )}
 
             {updateState.status === 'available' && (
               <>
