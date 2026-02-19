@@ -45,9 +45,13 @@ const createDefaultTerminalTabs = (): TerminalTabsState => {
 // Ensure saved toolbar panels include all known panels (e.g. 'review' added later).
 function migrateToolbarPanels(saved: string[] | undefined): string[] {
   if (!saved || saved.length === 0) return [...DEFAULT_TOOLBAR_PANELS]
-  const missing = DEFAULT_TOOLBAR_PANELS.filter((p) => !saved.includes(p))
-  if (missing.length === 0) return saved
-  const result = [...saved]
+  const knownIds = new Set(DEFAULT_TOOLBAR_PANELS)
+  // Remove stale panel IDs that no longer exist (e.g. agentTerminal, userTerminal)
+  const filtered = saved.filter((p) => knownIds.has(p))
+  if (filtered.length === 0) return [...DEFAULT_TOOLBAR_PANELS]
+  const missing = DEFAULT_TOOLBAR_PANELS.filter((p) => !filtered.includes(p))
+  if (missing.length === 0) return filtered
+  const result = [...filtered]
   const settingsIdx = result.indexOf(PANEL_IDS.SETTINGS)
   for (const p of missing) {
     if (settingsIdx >= 0) {
