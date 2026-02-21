@@ -3,6 +3,7 @@ import type { CodeLocation, RequestedChange, ReviewHistory } from '../../types/r
 import type { Session } from '../../store/sessions'
 import type { ManagedRepo } from '../../../preload/index'
 import { buildReviewPrompt, type PrComment } from '../../utils/reviewPromptBuilder'
+import { focusAgentTerminal } from '../../utils/focusHelpers'
 import type { ReviewDataState } from './useReviewData'
 
 async function fetchReviewContext(
@@ -164,6 +165,7 @@ export function useReviewActions(
       // Send command to agent terminal (user must press enter to confirm)
       await window.pty.write(session.agentPtyId!, 'Please read and follow the instructions in .broomy/review-prompt.md')
       setFetchingStatus('pasted')
+      focusAgentTerminal()
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
       setFetching(false)

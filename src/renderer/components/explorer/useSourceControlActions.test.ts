@@ -60,6 +60,8 @@ function makeData(overrides: Partial<SourceControlData> = {}): SourceControlData
     isFetchingBehindMain: false,
     agentMergeMessage: null,
     setAgentMergeMessage: vi.fn(),
+    askedAgentToResolve: false,
+    setAskedAgentToResolve: vi.fn(),
     ...overrides,
   }
 }
@@ -322,20 +324,26 @@ describe('useSourceControlActions', () => {
   })
 
   describe('handleCreatePr', () => {
-    it('opens PR create URL', async () => {
-      vi.mocked(window.gh.getPrCreateUrl).mockResolvedValue('https://github.com/test/test/compare')
-      const data = makeData()
+    it('writes prompt and sends instruction to agent', async () => {
+      const data = makeData({ branchBaseName: 'main' })
 
       const { result } = renderHook(() =>
-        useSourceControlActions({ directory: '/repos/project', data })
+        useSourceControlActions({ directory: '/repos/project', agentPtyId: 'pty-1', data })
       )
 
       await act(async () => {
         await result.current.handleCreatePr()
       })
 
-      expect(window.gh.getPrCreateUrl).toHaveBeenCalledWith('/repos/project')
-      expect(window.shell.openExternal).toHaveBeenCalledWith('https://github.com/test/test/compare')
+      expect(window.fs.mkdir).toHaveBeenCalledWith('/repos/project/.broomy')
+      expect(window.fs.writeFile).toHaveBeenCalledWith(
+        '/repos/project/.broomy/create-pr-prompt.md',
+        expect.stringContaining('# Create Pull Request')
+      )
+      expect(window.pty.write).toHaveBeenCalledWith(
+        'pty-1',
+        'Please read and follow the instructions in .broomy/create-pr-prompt.md'
+      )
     })
   })
 
@@ -455,7 +463,7 @@ describe('useSourceControlActions', () => {
   })
 
   describe('handleCommitMerge', () => {
-    it('commits merge successfully', async () => {
+    it('stages all files then commits merge successfully', async () => {
       vi.mocked(window.git.commitMerge).mockResolvedValue({ success: true })
       const onGitStatusRefresh = vi.fn()
       const data = makeData()
@@ -472,6 +480,7 @@ describe('useSourceControlActions', () => {
         await result.current.handleCommitMerge()
       })
 
+      expect(window.git.stageAll).toHaveBeenCalledWith('/repos/project')
       expect(window.git.commitMerge).toHaveBeenCalledWith('/repos/project')
       expect(onGitStatusRefresh).toHaveBeenCalled()
     })
@@ -488,6 +497,7 @@ describe('useSourceControlActions', () => {
         await result.current.handleCommitMerge()
       })
 
+      expect(window.git.stageAll).toHaveBeenCalledWith('/repos/project')
       expect(data.setCommitError).toHaveBeenCalledWith('merge failed')
       expect(data.setGitOpError).toHaveBeenCalledWith({ operation: 'Merge commit', message: 'merge failed' })
     })
@@ -517,6 +527,7 @@ describe('useSourceControlActions', () => {
         await result.current.handleCommitMerge()
       })
 
+      expect(window.git.stageAll).not.toHaveBeenCalled()
       expect(window.git.commitMerge).not.toHaveBeenCalled()
     })
 
@@ -533,6 +544,39 @@ describe('useSourceControlActions', () => {
       })
 
       expect(data.setAgentMergeMessage).toHaveBeenCalledWith(null)
+    })
+  })
+
+  describe('handleResolveConflicts', () => {
+    it('writes to agent PTY and sets askedAgentToResolve', async () => {
+      const data = makeData()
+      const { result } = renderHook(() =>
+        useSourceControlActions({ directory: '/repos/project', agentPtyId: 'pty-123', data })
+      )
+
+      await act(async () => {
+        await result.current.handleResolveConflicts()
+      })
+
+      expect(window.pty.write).toHaveBeenCalledWith('pty-123', 'resolve all merge conflicts\r')
+      expect(data.setAskedAgentToResolve).toHaveBeenCalledWith(true)
+      expect(data.setAgentMergeMessage).toHaveBeenCalledWith(
+        'Asked agent to resolve merge conflicts. Wait for the agent to finish, then commit the merge.'
+      )
+    })
+
+    it('does nothing when no agentPtyId', async () => {
+      const data = makeData()
+      const { result } = renderHook(() =>
+        useSourceControlActions({ directory: '/repos/project', data })
+      )
+
+      await act(async () => {
+        await result.current.handleResolveConflicts()
+      })
+
+      expect(window.pty.write).not.toHaveBeenCalled()
+      expect(data.setAskedAgentToResolve).not.toHaveBeenCalled()
     })
   })
 
@@ -1091,18 +1135,17 @@ describe('useSourceControlActions', () => {
     it('does nothing when no directory', async () => {
       const data = makeData()
       const { result } = renderHook(() =>
-        useSourceControlActions({ data })
+        useSourceControlActions({ agentPtyId: 'pty-1', data })
       )
 
       await act(async () => {
         await result.current.handleCreatePr()
       })
 
-      expect(window.gh.getPrCreateUrl).not.toHaveBeenCalled()
+      expect(window.fs.mkdir).not.toHaveBeenCalled()
     })
 
-    it('does nothing when no URL returned', async () => {
-      vi.mocked(window.gh.getPrCreateUrl).mockResolvedValue(null)
+    it('does nothing when no agentPtyId', async () => {
       const data = makeData()
 
       const { result } = renderHook(() =>
@@ -1113,7 +1156,24 @@ describe('useSourceControlActions', () => {
         await result.current.handleCreatePr()
       })
 
-      expect(window.shell.openExternal).not.toHaveBeenCalled()
+      expect(window.fs.mkdir).not.toHaveBeenCalled()
+    })
+
+    it('uses branchBaseName in prompt', async () => {
+      const data = makeData({ branchBaseName: 'develop' })
+
+      const { result } = renderHook(() =>
+        useSourceControlActions({ directory: '/repos/project', agentPtyId: 'pty-1', data })
+      )
+
+      await act(async () => {
+        await result.current.handleCreatePr()
+      })
+
+      expect(window.fs.writeFile).toHaveBeenCalledWith(
+        '/repos/project/.broomy/create-pr-prompt.md',
+        expect.stringContaining('origin/develop')
+      )
     })
   })
 })
