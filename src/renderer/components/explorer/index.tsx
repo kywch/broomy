@@ -32,6 +32,7 @@ export default function Explorer({
   session,
   repo,
   issueNumber,
+  issueTitle,
   issueUrl,
   issuePlanExists,
 }: ExplorerProps) {
@@ -164,6 +165,7 @@ export default function Explorer({
               agentPtyId={agentPtyId}
               onUpdatePrState={onUpdatePrState}
               issueNumber={issueNumber}
+              issueTitle={issueTitle}
               issueUrl={issueUrl}
               pushedToMainAt={pushedToMainAt}
               pushedToMainCommit={pushedToMainCommit}

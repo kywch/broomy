@@ -18,6 +18,7 @@ interface SCPrBannerProps {
   agentMergeMessage: string | null
   onDismissAgentMerge: () => void
   issueNumber?: number
+  issueTitle?: string
   issueUrl?: string
 }
 
@@ -35,6 +36,7 @@ export function SCPrBanner({
   agentMergeMessage,
   onDismissAgentMerge,
   issueNumber,
+  issueTitle,
   issueUrl,
 }: SCPrBannerProps) {
   const { showErrorDetail } = useErrorStore()
@@ -87,7 +89,7 @@ export function SCPrBanner({
               onClick={() => window.shell.openExternal(issueUrl)}
               className="text-xs text-accent hover:underline truncate flex-1 text-left"
             >
-              #{issueNumber}
+              #{issueNumber}{issueTitle ? `: ${issueTitle}` : ''}
             </button>
           </div>
         ) : null}

@@ -22,6 +22,7 @@ interface SourceControlProps {
   agentPtyId?: string
   onUpdatePrState?: (prState: PrState, prNumber?: number, prUrl?: string) => void
   issueNumber?: number
+  issueTitle?: string
   issueUrl?: string
   pushedToMainAt?: number
   pushedToMainCommit?: string
@@ -41,6 +42,7 @@ export function SourceControl({
   agentPtyId,
   onUpdatePrState,
   issueNumber,
+  issueTitle,
   issueUrl,
   pushedToMainAt,
   pushedToMainCommit,
@@ -86,6 +88,7 @@ export function SourceControl({
       agentMergeMessage={data.agentMergeMessage}
       onDismissAgentMerge={() => data.setAgentMergeMessage(null)}
       issueNumber={issueNumber}
+      issueTitle={issueTitle}
       issueUrl={issueUrl}
     />
   )
