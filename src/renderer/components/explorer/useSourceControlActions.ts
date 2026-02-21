@@ -154,7 +154,7 @@ export function useSourceControlActions({
     stagedFiles, unstagedFiles,
     commitMessage, setCommitMessage,
     setIsCommitting, setCommitError, setCommitErrorExpanded,
-    setGitOpError, setAgentMergeMessage,
+    setGitOpError, setAgentMergeMessage, setAskedAgentToResolve,
     expandedCommits, setExpandedCommits,
     commitFilesByHash, setCommitFilesByHash,
     setLoadingCommitFiles,
@@ -171,6 +171,8 @@ export function useSourceControlActions({
     setGitOpError(null)
     setAgentMergeMessage(null)
     try {
+      // Stage all files (including resolved conflict files) before committing
+      await window.git.stageAll(directory)
       const result = await window.git.commitMerge(directory)
       if (result.success) {
         onGitStatusRefresh?.()
@@ -186,6 +188,14 @@ export function useSourceControlActions({
     } finally {
       setIsCommitting(false)
     }
+  }
+
+  const handleResolveConflicts = async () => {
+    if (!agentPtyId) return
+    await window.pty.write(agentPtyId, 'resolve all merge conflicts\r')
+    focusAgentTerminal()
+    setAskedAgentToResolve(true)
+    setAgentMergeMessage('Asked agent to resolve merge conflicts. Wait for the agent to finish, then commit the merge.')
   }
 
   const handleRevertFile = async (filePath: string) => {
@@ -318,6 +328,7 @@ export function useSourceControlActions({
     handleUnstage,
     handleCommit,
     handleCommitMerge,
+    handleResolveConflicts,
     handleToggleCommit,
     handleReplyToComment,
     ...gitActions,

@@ -60,6 +60,8 @@ function makeData(overrides: Partial<SourceControlData> = {}): SourceControlData
     isFetchingBehindMain: false,
     agentMergeMessage: null,
     setAgentMergeMessage: vi.fn(),
+    askedAgentToResolve: false,
+    setAskedAgentToResolve: vi.fn(),
     ...overrides,
   }
 }
@@ -455,7 +457,7 @@ describe('useSourceControlActions', () => {
   })
 
   describe('handleCommitMerge', () => {
-    it('commits merge successfully', async () => {
+    it('stages all files then commits merge successfully', async () => {
       vi.mocked(window.git.commitMerge).mockResolvedValue({ success: true })
       const onGitStatusRefresh = vi.fn()
       const data = makeData()
@@ -472,6 +474,7 @@ describe('useSourceControlActions', () => {
         await result.current.handleCommitMerge()
       })
 
+      expect(window.git.stageAll).toHaveBeenCalledWith('/repos/project')
       expect(window.git.commitMerge).toHaveBeenCalledWith('/repos/project')
       expect(onGitStatusRefresh).toHaveBeenCalled()
     })
@@ -488,6 +491,7 @@ describe('useSourceControlActions', () => {
         await result.current.handleCommitMerge()
       })
 
+      expect(window.git.stageAll).toHaveBeenCalledWith('/repos/project')
       expect(data.setCommitError).toHaveBeenCalledWith('merge failed')
       expect(data.setGitOpError).toHaveBeenCalledWith({ operation: 'Merge commit', message: 'merge failed' })
     })
@@ -517,6 +521,7 @@ describe('useSourceControlActions', () => {
         await result.current.handleCommitMerge()
       })
 
+      expect(window.git.stageAll).not.toHaveBeenCalled()
       expect(window.git.commitMerge).not.toHaveBeenCalled()
     })
 
@@ -533,6 +538,39 @@ describe('useSourceControlActions', () => {
       })
 
       expect(data.setAgentMergeMessage).toHaveBeenCalledWith(null)
+    })
+  })
+
+  describe('handleResolveConflicts', () => {
+    it('writes to agent PTY and sets askedAgentToResolve', async () => {
+      const data = makeData()
+      const { result } = renderHook(() =>
+        useSourceControlActions({ directory: '/repos/project', agentPtyId: 'pty-123', data })
+      )
+
+      await act(async () => {
+        await result.current.handleResolveConflicts()
+      })
+
+      expect(window.pty.write).toHaveBeenCalledWith('pty-123', 'resolve all merge conflicts\r')
+      expect(data.setAskedAgentToResolve).toHaveBeenCalledWith(true)
+      expect(data.setAgentMergeMessage).toHaveBeenCalledWith(
+        'Asked agent to resolve merge conflicts. Wait for the agent to finish, then commit the merge.'
+      )
+    })
+
+    it('does nothing when no agentPtyId', async () => {
+      const data = makeData()
+      const { result } = renderHook(() =>
+        useSourceControlActions({ directory: '/repos/project', data })
+      )
+
+      await act(async () => {
+        await result.current.handleResolveConflicts()
+      })
+
+      expect(window.pty.write).not.toHaveBeenCalled()
+      expect(data.setAskedAgentToResolve).not.toHaveBeenCalled()
     })
   })
 

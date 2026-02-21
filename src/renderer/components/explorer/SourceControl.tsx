@@ -157,6 +157,7 @@ export function SourceControl({
         setCommitMessage={data.setCommitMessage}
         isCommitting={data.isCommitting}
         isMerging={syncStatus?.isMerging ?? false}
+        hasConflicts={syncStatus?.hasConflicts ?? false}
         commitError={data.commitError}
         commitErrorExpanded={data.commitErrorExpanded}
         setCommitErrorExpanded={data.setCommitErrorExpanded}
@@ -164,6 +165,8 @@ export function SourceControl({
         isSyncing={data.isSyncing}
         onCommit={actions.handleCommit}
         onCommitMerge={actions.handleCommitMerge}
+        onResolveConflicts={actions.handleResolveConflicts}
+        askedAgentToResolve={data.askedAgentToResolve}
         onSync={actions.handleSync}
         onSyncWithMain={actions.handleSyncWithMain}
         onPushNewBranch={actions.handlePushNewBranch}

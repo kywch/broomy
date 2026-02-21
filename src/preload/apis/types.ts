@@ -19,6 +19,7 @@ export type GitStatusResult = {
   tracking: string | null
   current: string | null
   isMerging?: boolean
+  hasConflicts?: boolean
 }
 
 export type SearchResult = {
