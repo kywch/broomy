@@ -70,6 +70,10 @@ describe('withGitProgress', () => {
     resolve!('done')
     await promise
 
+    // Final call should transition to idle
+    const lastCall = calls[calls.length - 1]
+    expect(lastCall).toEqual({ id: 'session-1', update: { status: 'idle' } })
+
     // After resolution, no more calls should happen
     const countAfterResolve = calls.length
     await vi.advanceTimersByTimeAsync(1000)
@@ -96,8 +100,10 @@ describe('withGitProgress', () => {
 
     await expect(withGitProgress('session-1', fn)).rejects.toThrow('git failed')
 
-    // Initial call happened
-    expect(calls.length).toBeGreaterThanOrEqual(1)
+    // Should have initial working call + final idle call
+    expect(calls.length).toBeGreaterThanOrEqual(2)
+    const lastCall = calls[calls.length - 1]
+    expect(lastCall).toEqual({ id: 'session-1', update: { status: 'idle' } })
 
     // After rejection, no more calls
     const countAfterError = calls.length

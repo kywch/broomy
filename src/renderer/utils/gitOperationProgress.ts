@@ -25,5 +25,9 @@ export async function withGitProgress<T>(
     return await fn()
   } finally {
     clearInterval(interval)
+    // Explicitly transition to idle so the store can detect the
+    // working→idle transition and mark the session as unread
+    // (if the operation lasted 3+ seconds).
+    useSessionStore.getState().updateAgentMonitor(sessionId, { status: 'idle' })
   }
 }
