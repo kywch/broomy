@@ -1,5 +1,7 @@
 import type { SourceControlData } from './useSourceControlData'
 import { focusAgentTerminal } from '../../utils/focusHelpers'
+import { withGitProgress } from '../../utils/gitOperationProgress'
+import { useSessionStore } from '../../store/sessions'
 
 export interface SourceControlActionsProps {
   directory?: string
@@ -9,13 +11,17 @@ export interface SourceControlActionsProps {
   data: SourceControlData
 }
 
-function createGitActions(
-  directory: string | undefined,
-  onGitStatusRefresh: (() => void) | undefined,
-  agentPtyId: string | undefined,
-  onRecordPushToMain: ((commitHash: string) => void) | undefined,
-  data: SourceControlData,
-) {
+interface GitActionsConfig {
+  directory: string | undefined
+  onGitStatusRefresh: (() => void) | undefined
+  agentPtyId: string | undefined
+  onRecordPushToMain: ((commitHash: string) => void) | undefined
+  data: SourceControlData
+  sessionId: string | null
+}
+
+function createGitActions(config: GitActionsConfig) {
+  const { directory, onGitStatusRefresh, agentPtyId, onRecordPushToMain, data, sessionId } = config
   const {
     setIsSyncing, setIsSyncingWithMain, setGitOpError,
     branchBaseName, setIsPushingToMain, gitStatus,
@@ -27,17 +33,19 @@ function createGitActions(
     setIsSyncing(true)
     setGitOpError(null)
     try {
-      const pullResult = await window.git.pull(directory)
-      if (!pullResult.success) {
-        setGitOpError({ operation: 'Pull', message: pullResult.error || 'Pull failed' })
-        return
-      }
-      const pushResult = await window.git.push(directory)
-      if (!pushResult.success) {
-        setGitOpError({ operation: 'Push', message: pushResult.error || 'Push failed' })
-        return
-      }
-      onGitStatusRefresh?.()
+      await withGitProgress(sessionId, async () => {
+        const pullResult = await window.git.pull(directory)
+        if (!pullResult.success) {
+          setGitOpError({ operation: 'Pull', message: pullResult.error || 'Pull failed' })
+          return
+        }
+        const pushResult = await window.git.push(directory)
+        if (!pushResult.success) {
+          setGitOpError({ operation: 'Push', message: pushResult.error || 'Push failed' })
+          return
+        }
+        onGitStatusRefresh?.()
+      })
     } catch (err) {
       setGitOpError({ operation: 'Sync', message: String(err) })
     } finally {
@@ -57,21 +65,23 @@ function createGitActions(
     setGitOpError(null)
     setAgentMergeMessage(null)
     try {
-      const result = await window.git.pullOriginMain(directory)
-      if (result.success) {
-        onGitStatusRefresh?.()
-      } else if (result.hasConflicts) {
-        if (agentPtyId) {
-          await window.pty.write(agentPtyId, 'resolve all merge conflicts\r')
-          focusAgentTerminal()
-          setAgentMergeMessage('Asked agent to resolve merge conflicts. Wait for the agent to finish, then commit the merge.')
+      await withGitProgress(sessionId, async () => {
+        const result = await window.git.pullOriginMain(directory)
+        if (result.success) {
+          onGitStatusRefresh?.()
+        } else if (result.hasConflicts) {
+          if (agentPtyId) {
+            await window.pty.write(agentPtyId, 'resolve all merge conflicts\r')
+            focusAgentTerminal()
+            setAgentMergeMessage('Asked agent to resolve merge conflicts. Wait for the agent to finish, then commit the merge.')
+          } else {
+            setGitOpError({ operation: 'Sync with main', message: 'Merge conflicts detected. Resolve them manually.' })
+          }
+          onGitStatusRefresh?.()
         } else {
-          setGitOpError({ operation: 'Sync with main', message: 'Merge conflicts detected. Resolve them manually.' })
+          setGitOpError({ operation: 'Sync with main', message: result.error || 'Sync failed' })
         }
-        onGitStatusRefresh?.()
-      } else {
-        setGitOpError({ operation: 'Sync with main', message: result.error || 'Sync failed' })
-      }
+      })
     } catch (err) {
       setGitOpError({ operation: 'Sync with main', message: String(err) })
     } finally {
@@ -84,29 +94,31 @@ function createGitActions(
     setIsPushingToMain(true)
     setGitOpError(null)
     try {
-      const behindInfo = await window.git.isBehindMain(directory)
-      if (behindInfo.behind > 0) {
-        setIsPushingToMain(false)
-        const shouldSync = window.confirm(
-          `Main has ${behindInfo.behind} new commit${behindInfo.behind !== 1 ? 's' : ''}. Sync with main first?`
-        )
-        if (shouldSync) {
-          await handleSyncWithMain()
-          return
+      await withGitProgress(sessionId, async () => {
+        const behindInfo = await window.git.isBehindMain(directory)
+        if (behindInfo.behind > 0) {
+          setIsPushingToMain(false)
+          const shouldSync = window.confirm(
+            `Main has ${behindInfo.behind} new commit${behindInfo.behind !== 1 ? 's' : ''}. Sync with main first?`
+          )
+          if (shouldSync) {
+            await handleSyncWithMain()
+            return
+          }
+          setIsPushingToMain(true)
         }
-        setIsPushingToMain(true)
-      }
 
-      const result = await window.gh.mergeBranchToMain(directory)
-      if (result.success) {
-        const headCommit = await window.git.headCommit(directory)
-        if (headCommit && onRecordPushToMain) {
-          onRecordPushToMain(headCommit)
+        const result = await window.gh.mergeBranchToMain(directory)
+        if (result.success) {
+          const headCommit = await window.git.headCommit(directory)
+          if (headCommit && onRecordPushToMain) {
+            onRecordPushToMain(headCommit)
+          }
+          onGitStatusRefresh?.()
+        } else {
+          setGitOpError({ operation: `Push to ${branchBaseName}`, message: result.error || 'Push to main failed' })
         }
-        onGitStatusRefresh?.()
-      } else {
-        setGitOpError({ operation: `Push to ${branchBaseName}`, message: result.error || 'Push to main failed' })
-      }
+      })
     } catch (err) {
       setGitOpError({ operation: `Push to ${branchBaseName}`, message: String(err) })
     } finally {
@@ -127,12 +139,14 @@ function createGitActions(
     setIsSyncing(true)
     setGitOpError(null)
     try {
-      const result = await window.git.pushNewBranch(directory, branchName)
-      if (!result.success) {
-        setGitOpError({ operation: 'Push branch', message: result.error || 'Failed to push branch' })
-        return
-      }
-      onGitStatusRefresh?.()
+      await withGitProgress(sessionId, async () => {
+        const result = await window.git.pushNewBranch(directory, branchName)
+        if (!result.success) {
+          setGitOpError({ operation: 'Push branch', message: result.error || 'Failed to push branch' })
+          return
+        }
+        onGitStatusRefresh?.()
+      })
     } catch (err) {
       setGitOpError({ operation: 'Push branch', message: String(err) })
     } finally {
@@ -162,7 +176,8 @@ export function useSourceControlActions({
     replyText, setReplyText, setIsSubmittingReply,
   } = data
 
-  const gitActions = createGitActions(directory, onGitStatusRefresh, agentPtyId, onRecordPushToMain, data)
+  const activeSessionId = useSessionStore((s) => s.activeSessionId)
+  const gitActions = createGitActions({ directory, onGitStatusRefresh, agentPtyId, onRecordPushToMain, data, sessionId: activeSessionId })
 
   const handleCommitMerge = async () => {
     if (!directory) return
@@ -171,14 +186,16 @@ export function useSourceControlActions({
     setGitOpError(null)
     setAgentMergeMessage(null)
     try {
-      const result = await window.git.commitMerge(directory)
-      if (result.success) {
-        onGitStatusRefresh?.()
-      } else {
-        const errorMsg = result.error || 'Merge commit failed'
-        setCommitError(errorMsg)
-        setGitOpError({ operation: 'Merge commit', message: errorMsg })
-      }
+      await withGitProgress(activeSessionId, async () => {
+        const result = await window.git.commitMerge(directory)
+        if (result.success) {
+          onGitStatusRefresh?.()
+        } else {
+          const errorMsg = result.error || 'Merge commit failed'
+          setCommitError(errorMsg)
+          setGitOpError({ operation: 'Merge commit', message: errorMsg })
+        }
+      })
     } catch (err) {
       const errorMsg = String(err)
       setCommitError(errorMsg)
@@ -246,17 +263,19 @@ export function useSourceControlActions({
     setCommitError(null)
     setGitOpError(null)
     try {
-      const result = await window.git.commit(directory, commitMessage.trim())
-      if (result.success) {
-        setCommitMessage('')
-        setCommitError(null)
-        onGitStatusRefresh?.()
-      } else {
-        const errorMsg = result.error || 'Commit failed'
-        setCommitError(errorMsg)
-        setCommitErrorExpanded(false)
-        setGitOpError({ operation: 'Commit', message: errorMsg })
-      }
+      await withGitProgress(activeSessionId, async () => {
+        const result = await window.git.commit(directory, commitMessage.trim())
+        if (result.success) {
+          setCommitMessage('')
+          setCommitError(null)
+          onGitStatusRefresh?.()
+        } else {
+          const errorMsg = result.error || 'Commit failed'
+          setCommitError(errorMsg)
+          setCommitErrorExpanded(false)
+          setGitOpError({ operation: 'Commit', message: errorMsg })
+        }
+      })
     } catch (err) {
       const errorMsg = String(err)
       setCommitError(errorMsg)

@@ -4,9 +4,15 @@ import { renderHook, act } from '@testing-library/react'
 import '../../../test/react-setup'
 import { useSourceControlActions } from './useSourceControlActions'
 import type { SourceControlData } from './useSourceControlData'
+import { useSessionStore } from '../../store/sessions'
+
+vi.mock('../../utils/gitOperationProgress', () => ({
+  withGitProgress: vi.fn((_sessionId: string | null, fn: () => Promise<unknown>) => fn()),
+}))
 
 beforeEach(() => {
   vi.clearAllMocks()
+  useSessionStore.setState({ activeSessionId: 'test-session-1' })
 })
 
 function makeData(overrides: Partial<SourceControlData> = {}): SourceControlData {
@@ -1114,6 +1120,110 @@ describe('useSourceControlActions', () => {
       })
 
       expect(window.shell.openExternal).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('withGitProgress integration', () => {
+    it('wraps handleSync with progress tracking', async () => {
+      const { withGitProgress } = await import('../../utils/gitOperationProgress')
+      vi.mocked(window.git.pull).mockResolvedValue({ success: true })
+      vi.mocked(window.git.push).mockResolvedValue({ success: true })
+      const data = makeData()
+
+      const { result } = renderHook(() =>
+        useSourceControlActions({ directory: '/repos/project', data })
+      )
+
+      await act(async () => {
+        await result.current.handleSync()
+      })
+
+      expect(withGitProgress).toHaveBeenCalledWith('test-session-1', expect.any(Function))
+    })
+
+    it('wraps handleCommit with progress tracking', async () => {
+      const { withGitProgress } = await import('../../utils/gitOperationProgress')
+      vi.mocked(window.git.commit).mockResolvedValue({ success: true })
+      const data = makeData({
+        stagedFiles: [{ path: 'src/index.ts', status: 'modified' as const, staged: true, indexStatus: 'M', workingDirStatus: ' ' }],
+        commitMessage: 'fix: stuff',
+      })
+
+      const { result } = renderHook(() =>
+        useSourceControlActions({ directory: '/repos/project', data })
+      )
+
+      await act(async () => {
+        await result.current.handleCommit()
+      })
+
+      expect(withGitProgress).toHaveBeenCalledWith('test-session-1', expect.any(Function))
+    })
+
+    it('wraps handleCommitMerge with progress tracking', async () => {
+      const { withGitProgress } = await import('../../utils/gitOperationProgress')
+      vi.mocked(window.git.commitMerge).mockResolvedValue({ success: true })
+      const data = makeData()
+
+      const { result } = renderHook(() =>
+        useSourceControlActions({ directory: '/repos/project', onGitStatusRefresh: vi.fn(), data })
+      )
+
+      await act(async () => {
+        await result.current.handleCommitMerge()
+      })
+
+      expect(withGitProgress).toHaveBeenCalledWith('test-session-1', expect.any(Function))
+    })
+
+    it('wraps handleSyncWithMain with progress tracking', async () => {
+      const { withGitProgress } = await import('../../utils/gitOperationProgress')
+      vi.mocked(window.git.pullOriginMain).mockResolvedValue({ success: true })
+      const data = makeData()
+
+      const { result } = renderHook(() =>
+        useSourceControlActions({ directory: '/repos/project', data })
+      )
+
+      await act(async () => {
+        await result.current.handleSyncWithMain()
+      })
+
+      expect(withGitProgress).toHaveBeenCalledWith('test-session-1', expect.any(Function))
+    })
+
+    it('wraps handlePushNewBranch with progress tracking', async () => {
+      const { withGitProgress } = await import('../../utils/gitOperationProgress')
+      vi.mocked(window.git.pushNewBranch).mockResolvedValue({ success: true })
+      const data = makeData()
+
+      const { result } = renderHook(() =>
+        useSourceControlActions({ directory: '/repos/project', data })
+      )
+
+      await act(async () => {
+        await result.current.handlePushNewBranch('feature/test')
+      })
+
+      expect(withGitProgress).toHaveBeenCalledWith('test-session-1', expect.any(Function))
+    })
+
+    it('wraps handlePushToMain with progress tracking', async () => {
+      const { withGitProgress } = await import('../../utils/gitOperationProgress')
+      vi.mocked(window.git.isBehindMain).mockResolvedValue({ behind: 0, defaultBranch: 'main' })
+      vi.mocked(window.gh.mergeBranchToMain).mockResolvedValue({ success: true })
+      vi.mocked(window.git.headCommit).mockResolvedValue('abc123')
+      const data = makeData()
+
+      const { result } = renderHook(() =>
+        useSourceControlActions({ directory: '/repos/project', data })
+      )
+
+      await act(async () => {
+        await result.current.handlePushToMain()
+      })
+
+      expect(withGitProgress).toHaveBeenCalledWith('test-session-1', expect.any(Function))
     })
   })
 })
