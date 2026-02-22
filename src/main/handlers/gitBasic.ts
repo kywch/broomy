@@ -1,4 +1,6 @@
 import { IpcMain } from 'electron'
+import { readFile } from 'fs/promises'
+import { join } from 'path'
 import simpleGit from 'simple-git'
 import { statusFromChar } from '../gitStatusParser'
 import { HandlerContext, getE2EMockBranches } from './types'
@@ -93,7 +95,20 @@ async function handleStatus(ctx: HandlerContext, repoPath: string) {
     }
 
     const isMerging = await git.raw(['rev-parse', '--verify', 'MERGE_HEAD']).then(() => true).catch(() => false)
-    const hasConflicts = status.files.some(f => f.index === 'U' || f.working_dir === 'U')
+    const unmergedFiles = status.files.filter(f => f.index === 'U' || f.working_dir === 'U')
+    let hasConflicts = false
+    for (const file of unmergedFiles) {
+      try {
+        const content = await readFile(join(repoPath, file.path), 'utf-8')
+        if (content.includes('<<<<<<<')) {
+          hasConflicts = true
+          break
+        }
+      } catch {
+        hasConflicts = true
+        break
+      }
+    }
 
     return {
       files,
