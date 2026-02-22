@@ -16,8 +16,9 @@ pnpm build           # Build without packaging
 pnpm test:unit       # Run Vitest unit tests
 pnpm test:unit:watch # Unit tests in watch mode
 pnpm test:unit:coverage # Unit tests with 90% line coverage threshold
-pnpm test            # Run Playwright E2E tests (headless)
-pnpm test:headed     # E2E tests with visible window
+pnpm test:e2e        # Run Playwright E2E tests (fast, uses Vite dev server)
+pnpm test:e2e:headed # E2E tests with visible window
+pnpm test:e2e:built  # E2E tests against production build (for CI)
 pnpm dist            # Build and package for macOS
 ```
 
@@ -78,9 +79,9 @@ Session store debounces saves with 500ms delay. Runtime-only state (`status`, `i
 
 ## Testing
 
-**Always confirm these checks pass before considering work done: `pnpm lint`, `pnpm typecheck`, `pnpm test:unit`, and `pnpm test` (E2E).**
+**Always confirm these checks pass before considering work done: `pnpm lint`, `pnpm typecheck`, `pnpm test:unit`, and `pnpm test:e2e`.**
 
-**IMPORTANT: Do NOT run E2E tests (`pnpm test`) without first asking the user for confirmation.** E2E tests launch Electron and are resource-intensive — running them from multiple agents simultaneously will hose the machine. Always run lint, typecheck, and unit tests first, then ask before running E2E.
+**IMPORTANT: Do NOT run E2E tests (`pnpm test:e2e`) without first asking the user for confirmation.** E2E tests launch Electron and are resource-intensive — running them from multiple agents simultaneously will hose the machine. Always run lint, typecheck, and unit tests first, then ask before running E2E.
 
 ### Unit Tests
 
@@ -108,7 +109,7 @@ Playwright tests in `tests/`. The test system:
 4. Run `pnpm typecheck` to verify there are no type errors
 5. Run `pnpm test:unit` to verify all unit tests pass
 6. Run `pnpm test:unit:coverage` to confirm coverage stays above 90%
-7. **Ask the user for confirmation**, then run `pnpm test` to verify E2E tests still pass
+7. **Ask the user for confirmation**, then run `pnpm test:e2e` to verify E2E tests still pass
 
 ## Adding New Features
 
