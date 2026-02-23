@@ -669,7 +669,9 @@ describe('useLayoutKeyboard', () => {
   describe('select-all scoping', () => {
     beforeEach(() => {
       // jsdom doesn't define execCommand — stub it so we can spy on it
+      // eslint-disable-next-line @typescript-eslint/no-deprecated
       if (!document.execCommand) {
+        // eslint-disable-next-line @typescript-eslint/no-deprecated
         document.execCommand = vi.fn().mockReturnValue(true)
       }
     })

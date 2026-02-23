@@ -81,7 +81,7 @@ function InlineCreateInput({
   setInlineInputValue: (v: string) => void
   submitInlineInput: () => Promise<void>
   setInlineInput: (v: null) => void
-  inputRef: React.RefObject<HTMLInputElement | null>
+  inputRef: React.RefObject<HTMLInputElement>
   depth: number
 }) {
   if (inlineInput.parentPath !== parentPath) return null
