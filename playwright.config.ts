@@ -6,7 +6,7 @@ export default defineConfig({
   testDir: './tests',
   testIgnore: process.env.GENERATE_SCREENSHOTS
     ? []
-    : ['**/screenshots.spec.ts', '**/special-flows/**', '**/features/**'],
+    : ['**/screenshots.spec.ts', '**/features/**'],
   timeout: 30000,
   expect: {
     timeout: 5000,

@@ -60,8 +60,8 @@ const mockGit: Mocked<GitApi> = {
   headCommit: vi.fn().mockResolvedValue(null),
   listBranches: vi.fn().mockResolvedValue([]),
   fetchBranch: vi.fn().mockResolvedValue({ success: true }),
-  fetchPrHead: vi.fn().mockResolvedValue({ success: true }),
-  pullPrBranch: vi.fn().mockResolvedValue({ success: true }),
+  fetchReviewPrHead: vi.fn().mockResolvedValue({ success: true }),
+  syncReviewBranch: vi.fn().mockResolvedValue({ success: true }),
   isMergedInto: vi.fn().mockResolvedValue(false),
   hasBranchCommits: vi.fn().mockResolvedValue(false),
   pullOriginMain: vi.fn().mockResolvedValue({ success: true }),
@@ -86,6 +86,7 @@ const mockUpdate: Mocked<UpdateApi> = {
   installUpdate: vi.fn(),
   onDownloadProgress: vi.fn().mockReturnValue(() => {}),
   onUpdateDownloaded: vi.fn().mockReturnValue(() => {}),
+  onUpdateAvailable: vi.fn().mockReturnValue(() => {}),
 }
 
 // Mock window.profiles

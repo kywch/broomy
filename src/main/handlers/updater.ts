@@ -13,9 +13,16 @@ export type UpdateCheckResult = {
 export function register(ipcMain: IpcMain, ctx: HandlerContext): void {
   // In E2E or dev mode, return mock/no-op responses
   if (ctx.isE2ETest || ctx.isDev) {
-    ipcMain.handle('updater:checkForUpdates', (): UpdateCheckResult => ({
-      updateAvailable: false,
-    }))
+    ipcMain.handle('updater:checkForUpdates', (): UpdateCheckResult => {
+      if (ctx.isScreenshotMode) {
+        return {
+          updateAvailable: true,
+          version: '0.9.0',
+          releaseNotes: 'Dark mode support\nImproved performance\nBug fixes',
+        }
+      }
+      return { updateAvailable: false }
+    })
     ipcMain.handle('updater:downloadUpdate', () => {})
     ipcMain.handle('updater:installUpdate', () => {})
     return

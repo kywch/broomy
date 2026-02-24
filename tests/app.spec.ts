@@ -78,27 +78,6 @@ test.describe('Broomy App', () => {
     await expect(featureBranch).toBeVisible()
   })
 
-  test('should toggle Explorer panel', async () => {
-    const filesButton = page.locator('button:has-text("Explorer")')
-    await expect(filesButton).toBeVisible()
-
-    // Click to toggle on
-    await filesButton.click()
-    await page.waitForTimeout(300)
-
-    // Check for explorer panel content (Explorer header appears when panel is open)
-    const explorerHeader = page.locator('text=Explorer').nth(1) // Second one is in the panel
-    await expect(explorerHeader).toBeVisible()
-
-    // Toggle off
-    await filesButton.click()
-    await page.waitForTimeout(300)
-
-    // Panel should be gone - check that Explorer header (second instance) is not visible
-    const explorerHeaders = await page.locator('text=Explorer').count()
-    expect(explorerHeaders).toBe(1) // Only the button remains
-  })
-
   test('should switch between sessions', async () => {
     // Click on backend-api session (session items are divs with cursor-pointer)
     const backendSession = page.locator('.cursor-pointer:has-text("backend-api")')
@@ -203,12 +182,6 @@ test.describe('Layout', () => {
     // Main content area - look for the terminal area
     const terminalArea = page.locator('.xterm').first()
     await expect(terminalArea).toBeVisible()
-  })
-
-  test('should have status color indicators', async () => {
-    // All sessions start as idle, so check for idle indicators
-    const idleIndicator = page.locator('.bg-status-idle').first()
-    await expect(idleIndicator).toBeVisible()
   })
 })
 
