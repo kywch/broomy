@@ -70,7 +70,7 @@ async function setSessionStatus(status: string) {
 test.beforeAll(async () => {
   await fs.promises.mkdir(SCREENSHOTS, { recursive: true })
 
-  ;({ page } = await resetApp())
+  ;({ page } = await resetApp({ scenario: 'marketing' }))
 })
 
 test.afterAll(async () => {

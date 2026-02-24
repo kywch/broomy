@@ -3,11 +3,11 @@ import { watch } from 'fs'
 import { readdir, readFile, writeFile, appendFile, stat, mkdir, rm, access, rename } from 'fs/promises'
 import { join } from 'path'
 import { normalizePath } from '../platform'
-import { HandlerContext } from './types'
+import { HandlerContext, E2EScenario } from './types'
 
 async function handleReadDir(ctx: HandlerContext, dirPath: string) {
   if (ctx.isE2ETest) {
-    if (ctx.isScreenshotMode) {
+    if (ctx.e2eScenario === E2EScenario.Marketing) {
       if (dirPath.endsWith('/src')) {
         return [
           { name: 'components', path: join(dirPath, 'components'), isDirectory: true },
@@ -81,7 +81,7 @@ async function handleReadDir(ctx: HandlerContext, dirPath: string) {
 
 async function handleReadFile(ctx: HandlerContext, filePath: string) {
   if (ctx.isE2ETest) {
-    if (ctx.isScreenshotMode && filePath.includes('auth.ts')) {
+    if (ctx.e2eScenario === E2EScenario.Marketing && filePath.includes('auth.ts')) {
       const IM = 'im' + 'port'
       const lines = []
       lines.push(`${IM  } { Request, Response, NextFunction } from 'express'`)
@@ -119,7 +119,7 @@ async function handleReadFile(ctx: HandlerContext, filePath: string) {
       return lines.join('\n')
     }
     // Screenshot mode: fake review data for ReviewPanel
-    if (ctx.isScreenshotMode && (/broomy-review-[^/\\]+[/\\]review\.json$/.exec(filePath))) {
+    if (ctx.e2eScenario === E2EScenario.Marketing && (/broomy-review-[^/\\]+[/\\]review\.json$/.exec(filePath))) {
       return JSON.stringify({
         version: 1,
         generatedAt: '2025-01-15T10:30:00Z',
@@ -179,7 +179,7 @@ async function handleReadFile(ctx: HandlerContext, filePath: string) {
         ],
       })
     }
-    if (ctx.isScreenshotMode && (/\/tmp\/broomy-review-[^/]+\/comments\.json$/.exec(filePath))) {
+    if (ctx.e2eScenario === E2EScenario.Marketing && (/\/tmp\/broomy-review-[^/]+\/comments\.json$/.exec(filePath))) {
       return '[]'
     }
     if (filePath.endsWith('README.md')) {
@@ -296,7 +296,7 @@ async function handleAppendFile(ctx: HandlerContext, filePath: string, content: 
 }
 
 async function handleExists(ctx: HandlerContext, filePath: string) {
-  if (ctx.isScreenshotMode && (/\/tmp\/broomy-review-[^/]+\/(review|comments)\.json$/.exec(filePath))) {
+  if (ctx.e2eScenario === E2EScenario.Marketing && (/\/tmp\/broomy-review-[^/]+\/(review|comments)\.json$/.exec(filePath))) {
     return true
   }
   // E2E mode: review/comments files always exist for mock data

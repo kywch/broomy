@@ -2,7 +2,7 @@ import { BrowserWindow, IpcMain } from 'electron'
 import pkg from 'electron-updater'
 const { autoUpdater } = pkg
 type UpdateInfo = import('electron-updater').UpdateInfo
-import { HandlerContext } from './types'
+import { HandlerContext, E2EScenario } from './types'
 
 export type UpdateCheckResult = {
   updateAvailable: boolean
@@ -14,7 +14,7 @@ export function register(ipcMain: IpcMain, ctx: HandlerContext): void {
   // In E2E or dev mode, return mock/no-op responses
   if (ctx.isE2ETest || ctx.isDev) {
     ipcMain.handle('updater:checkForUpdates', (): UpdateCheckResult => {
-      if (ctx.isScreenshotMode) {
+      if (ctx.e2eScenario === E2EScenario.Marketing) {
         return {
           updateAvailable: true,
           version: '0.9.0',

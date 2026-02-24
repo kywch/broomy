@@ -155,9 +155,10 @@ test.describe.serial('Feature: PR Description & Comments', () => {
   })
 
   test('Step 3: PR Description section detail', async () => {
-    // Scroll to make PR Description visible
-    const scrollContainer = page.locator('[data-panel-id="explorer"] .overflow-y-auto').first()
-    await scrollContainer.evaluate(el => el.scrollTop = 0)
+    // Ensure PR Description section is expanded
+    const prDescHeader = page.locator('button:has-text("PR Description")').first()
+    await prDescHeader.scrollIntoViewIfNeeded()
+    await prDescHeader.click()
     await page.waitForTimeout(300)
 
     // Find the PR Description text content

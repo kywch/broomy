@@ -32,9 +32,6 @@ const isE2ETest = process.env.E2E_TEST === 'true'
 // Check if we should hide the window (headless mode)
 const isHeadless = process.env.E2E_HEADLESS !== 'false'
 
-// Check if we're in screenshot mode (richer mock data for marketing screenshots)
-const isScreenshotMode = process.env.SCREENSHOT_MODE === 'true'
-
 // PTY instances map
 const ptyProcesses = new Map<string, pty.IPty>()
 // File watchers map
@@ -161,7 +158,7 @@ function createWindow(profileId?: string): BrowserWindow {
 // Build context for handler modules
 const context: HandlerContext & { createWindow: (profileId?: string) => BrowserWindow } = {
   isE2ETest,
-  isScreenshotMode,
+  get e2eScenario() { return (process.env.E2E_SCENARIO || 'default') as import('./handlers/types').E2EScenario },
   isDev,
   isWindows,
   ptyProcesses,

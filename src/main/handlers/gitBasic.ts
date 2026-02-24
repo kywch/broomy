@@ -3,11 +3,11 @@ import { readFile } from 'fs/promises'
 import { join } from 'path'
 import simpleGit from 'simple-git'
 import { statusFromChar } from '../gitStatusParser'
-import { HandlerContext, getE2EMockBranches } from './types'
+import { HandlerContext, E2EScenario, getE2EMockBranches } from './types'
 
 async function handleGetBranch(ctx: HandlerContext, repoPath: string) {
   if (ctx.isE2ETest) {
-    const E2E_MOCK_BRANCHES = getE2EMockBranches(ctx.isScreenshotMode)
+    const E2E_MOCK_BRANCHES = getE2EMockBranches(ctx.e2eScenario)
     return E2E_MOCK_BRANCHES[repoPath] || 'main'
   }
 
@@ -35,9 +35,9 @@ async function handleIsGitRepo(ctx: HandlerContext, dirPath: string) {
 
 async function handleStatus(ctx: HandlerContext, repoPath: string) {
   if (ctx.isE2ETest) {
-    const E2E_MOCK_BRANCHES = getE2EMockBranches(ctx.isScreenshotMode)
+    const E2E_MOCK_BRANCHES = getE2EMockBranches(ctx.e2eScenario)
     const mockMerge = process.env.E2E_MOCK_MERGE
-    if (ctx.isScreenshotMode) {
+    if (ctx.e2eScenario === E2EScenario.Marketing) {
       return {
         files: [
           { path: 'src/middleware/auth.ts', status: 'modified', staged: true, indexStatus: 'M', workingDirStatus: ' ' },
@@ -242,7 +242,7 @@ async function handlePull(ctx: HandlerContext, repoPath: string) {
 
 async function handleDiff(ctx: HandlerContext, repoPath: string, filePath?: string) {
   if (ctx.isE2ETest) {
-    if (ctx.isScreenshotMode) {
+    if (ctx.e2eScenario === E2EScenario.Marketing) {
       // Build diff string without template literals to avoid Vite bundler issues
       const IM = 'im' + 'port' // avoid bundler parsing
       const lines = []
@@ -317,7 +317,7 @@ async function handleDiff(ctx: HandlerContext, repoPath: string, filePath?: stri
 
 async function handleShow(ctx: HandlerContext, repoPath: string, filePath: string, ref = 'HEAD') {
   if (ctx.isE2ETest) {
-    if (ctx.isScreenshotMode) {
+    if (ctx.e2eScenario === E2EScenario.Marketing) {
       const IM = 'im' + 'port'
       const lines = []
       lines.push(`${IM  } { Request, Response, NextFunction } from 'express'`)

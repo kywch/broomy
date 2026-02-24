@@ -107,7 +107,7 @@ test.describe.serial('Feature: Issue Link in Source Control', () => {
     await expect(issueRow).toBeVisible()
 
     // Verify the issue title is shown
-    await expect(dialog.locator('text=Add user authentication')).toBeVisible()
+    await expect(dialog.locator('text=Add support for the dark mode toggle')).toBeVisible()
 
     await screenshotElement(page, dialog, path.join(SCREENSHOTS, '02-issues-list.png'))
     steps.push({
@@ -129,7 +129,7 @@ test.describe.serial('Feature: Issue Link in Source Control', () => {
     // Should now be on the new branch view with issue details
     const issueInfo = dialog.locator('text=Issue #42')
     await expect(issueInfo).toBeVisible()
-    await expect(dialog.locator('text=Add user authentication')).toBeVisible()
+    await expect(dialog.locator('text=Add support for the dark mode toggle')).toBeVisible()
 
     await screenshotElement(page, dialog, path.join(SCREENSHOTS, '03-new-branch-from-issue.png'))
     steps.push({

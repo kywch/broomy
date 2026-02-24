@@ -28,7 +28,7 @@ async function runShellCommand(command: string, options: { cwd?: string; timeout
 }
 
 export function register(ipcMain: IpcMain, ctx: HandlerContext): void {
-  const E2E_MOCK_BRANCHES = getE2EMockBranches(ctx.isScreenshotMode)
+  const E2E_MOCK_BRANCHES = getE2EMockBranches(ctx.e2eScenario)
 
   // Agent CLI installation check
   ipcMain.handle('agent:isInstalled', async (_event, command: string) => {

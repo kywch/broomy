@@ -12,6 +12,7 @@ import {
   getE2EDemoSessions,
   getE2EDemoRepos,
   getE2EMockBranches,
+  E2EScenario,
   DEFAULT_AGENTS,
   DEFAULT_PROFILES,
 } from './types'
@@ -119,17 +120,17 @@ describe('expandHomePath', () => {
 
 describe('getE2EDemoSessions', () => {
   it('returns 8 sessions in screenshot mode', () => {
-    const sessions = getE2EDemoSessions(true)
+    const sessions = getE2EDemoSessions(E2EScenario.Marketing)
     expect(sessions).toHaveLength(8)
   })
 
   it('returns 3 sessions in non-screenshot mode', () => {
-    const sessions = getE2EDemoSessions(false)
+    const sessions = getE2EDemoSessions(E2EScenario.Default)
     expect(sessions).toHaveLength(3)
   })
 
   it('each session has id, name, directory, and agentId', () => {
-    const sessions = getE2EDemoSessions(false)
+    const sessions = getE2EDemoSessions(E2EScenario.Default)
     for (const session of sessions) {
       expect(session).toHaveProperty('id')
       expect(session).toHaveProperty('name')
@@ -139,7 +140,7 @@ describe('getE2EDemoSessions', () => {
   })
 
   it('session directories use tmpdir and are normalized', () => {
-    const sessions = getE2EDemoSessions(false)
+    const sessions = getE2EDemoSessions(E2EScenario.Default)
     for (const session of sessions) {
       // Should not contain backslashes (normalized)
       expect(session.directory).not.toContain('\\')
@@ -163,24 +164,24 @@ describe('getE2EDemoRepos', () => {
 
 describe('getE2EMockBranches', () => {
   it('returns 8 branch mappings in screenshot mode', () => {
-    const branches = getE2EMockBranches(true)
+    const branches = getE2EMockBranches(E2EScenario.Marketing)
     expect(Object.keys(branches)).toHaveLength(8)
   })
 
   it('returns 3 branch mappings in non-screenshot mode', () => {
-    const branches = getE2EMockBranches(false)
+    const branches = getE2EMockBranches(E2EScenario.Default)
     expect(Object.keys(branches)).toHaveLength(3)
   })
 
   it('keys are normalized paths (no backslashes)', () => {
-    const branches = getE2EMockBranches(false)
+    const branches = getE2EMockBranches(E2EScenario.Default)
     for (const key of Object.keys(branches)) {
       expect(key).not.toContain('\\')
     }
   })
 
   it('values are branch name strings', () => {
-    const branches = getE2EMockBranches(false)
+    const branches = getE2EMockBranches(E2EScenario.Default)
     for (const value of Object.values(branches)) {
       expect(typeof value).toBe('string')
       expect(value.length).toBeGreaterThan(0)

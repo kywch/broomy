@@ -2,17 +2,26 @@
  * Shared Electron fixture for feature documentation tests.
  *
  * Launches one Electron instance per Playwright worker and reuses it across
- * feature specs. Each feature calls `resetApp(page)` in beforeAll to reload
+ * feature specs. Each feature calls `resetApp()` in beforeAll to reload
  * the renderer, giving a fresh React/Zustand state without the ~5s cost of
  * a full Electron relaunch.
  *
  * Usage in feature specs:
  *
- *   import { test, expect, electronApp, appPage, resetApp } from '../_shared/electron-fixture'
+ *   import { test, expect, resetApp } from '../_shared/electron-fixture'
+ *   import type { Page } from '@playwright/test'
  *
  *   let page: Page
  *   test.beforeAll(async () => {
- *     page = await resetApp()
+ *     const result = await resetApp()
+ *     page = result.page
+ *   })
+ *
+ * For features that need the marketing scenario (richer sessions, file trees):
+ *
+ *   test.beforeAll(async () => {
+ *     const result = await resetApp({ scenario: 'marketing' })
+ *     page = result.page
  *   })
  */
 import { test as base, _electron as electron, ElectronApplication, Page } from '@playwright/test'
@@ -53,24 +62,50 @@ async function getOrLaunchApp(): Promise<{ electronApp: ElectronApplication; pag
   return { electronApp: sharedApp, page: sharedPage }
 }
 
+interface ResetOptions {
+  /**
+   * E2E mock data scenario. Available scenarios:
+   * - 'marketing': 8 sessions with rich git status and file trees.
+   *    Used for the Broomy marketing website screenshots.
+   * - undefined/omitted: default 3-session scenario with issue data.
+   */
+  scenario?: 'marketing'
+  /** Set mock merge state ('true', 'conflicts', or undefined to clear) */
+  mockMerge?: string
+}
+
 /**
  * Reload the renderer to get fresh app state for a new feature.
- * Returns the page for convenience.
+ * Optionally configure mock data scenario before reloading.
  */
 let isFirstCall = true
 
-export async function resetApp(): Promise<{ electronApp: ElectronApplication; page: Page }> {
+export async function resetApp(opts?: ResetOptions): Promise<{ electronApp: ElectronApplication; page: Page }> {
   const { electronApp, page } = await getOrLaunchApp()
 
+  // Set env vars on the main process before reload so IPC handlers pick them up
+  const scenario = opts?.scenario ?? 'default'
+  const mockMerge = opts?.mockMerge ?? ''
+  await electronApp.evaluate((_electron, { sc, mm }) => {
+    process.env.E2E_SCENARIO = sc
+    if (mm) process.env.E2E_MOCK_MERGE = mm; else delete process.env.E2E_MOCK_MERGE
+  }, { sc: scenario, mm: mockMerge })
+
   if (isFirstCall) {
-    // First call — app is already fresh from launch, no reload needed
+    // First call — app is already fresh from launch
     isFirstCall = false
+    if (opts?.scenario || opts?.mockMerge) {
+      // Env vars changed after launch — need a reload to pick them up
+      await page.reload()
+      await page.waitForLoadState('domcontentloaded')
+      await page.waitForSelector('#root > div', { timeout: 15000 })
+      await page.waitForSelector('.cursor-pointer', { timeout: 10000 })
+    }
   } else {
     // Subsequent calls — reload renderer to reset React/Zustand state
     await page.reload()
     await page.waitForLoadState('domcontentloaded')
     await page.waitForSelector('#root > div', { timeout: 15000 })
-    // Wait for sessions to load from main process (sidebar renders session cards)
     await page.waitForSelector('.cursor-pointer', { timeout: 10000 })
   }
 
@@ -78,8 +113,7 @@ export async function resetApp(): Promise<{ electronApp: ElectronApplication; pa
 }
 
 /**
- * Close the shared Electron app. Called automatically by global teardown,
- * but can also be called manually.
+ * Close the shared Electron app. Called automatically when the worker process exits.
  */
 export async function closeApp(): Promise<void> {
   if (sharedApp) {
@@ -88,6 +122,15 @@ export async function closeApp(): Promise<void> {
     sharedPage = null
   }
 }
+
+// Close Electron when the worker process exits
+process.on('beforeExit', () => {
+  if (sharedApp) {
+    sharedApp.close().catch(() => {})
+    sharedApp = null
+    sharedPage = null
+  }
+})
 
 // Re-export test and expect for convenience
 export { base as test, electron }

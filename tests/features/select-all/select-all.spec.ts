@@ -53,11 +53,11 @@ test.describe.serial('Feature: Select All Scoped to Active Pane', () => {
     const terminalArea = page.locator('.xterm').first()
     await expect(terminalArea).toBeVisible()
 
-    const terminalText = await page.evaluate(() => {
-      const viewport = document.querySelector('.xterm-rows')
-      return viewport?.textContent || ''
-    })
-    expect(terminalText).toContain('FAKE_CLAUDE_READY')
+    // Wait for fake agent to produce output
+    await expect(async () => {
+      const text = await page.evaluate(() => document.querySelector('.xterm-rows')?.textContent || '')
+      expect(text).toContain('FAKE_CLAUDE_READY')
+    }).toPass({ timeout: 10000 })
 
     await screenshotElement(page, terminalArea, path.join(SCREENSHOTS, '01-terminal-before.png'))
     steps.push({

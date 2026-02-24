@@ -190,11 +190,26 @@ console.log(`\n  ✓ Comparison complete: ${results.changed.length} changed, ${r
 // ── HTML generation ─────────────────────────────────────────
 
 function generateHTML(comparison, baselineResults, currentResults, outputDir) {
-  const { changed, added, removed, summary } = comparison
+  const { changed, added, removed, unchanged, summary } = comparison
   const tag = comparison.baselineTag
   const ref = comparison.currentRef
 
   const hasFailures = summary.baselineFailures > 0 || summary.currentFailures > 0
+
+  // Build feature grouping data — group all screenshots by feature name
+  const featureMap = {}
+  const allItems = [
+    ...changed.map(i => ({ ...i, status: 'changed' })),
+    ...added.map(i => ({ ...i, status: 'added' })),
+    ...removed.map(i => ({ ...i, status: 'removed' })),
+    ...unchanged.map(i => ({ ...i, status: 'unchanged' })),
+  ]
+  for (const item of allItems) {
+    const feature = item.key.split('/')[0]
+    if (!featureMap[feature]) featureMap[feature] = { changed: [], added: [], removed: [], unchanged: [] }
+    featureMap[feature][item.status].push(item)
+  }
+  const featureNames = Object.keys(featureMap).sort()
 
   let html = `<!DOCTYPE html>
 <html lang="en">
@@ -206,7 +221,7 @@ function generateHTML(comparison, baselineResults, currentResults, outputDir) {
   body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0d1117; color: #c9d1d9; padding: 24px; }
   h1 { color: #f0f6fc; margin-bottom: 8px; font-size: 24px; }
   .subtitle { color: #8b949e; margin-bottom: 24px; font-size: 14px; }
-  .summary { display: flex; gap: 16px; margin-bottom: 32px; flex-wrap: wrap; }
+  .summary { display: flex; gap: 16px; margin-bottom: 24px; flex-wrap: wrap; }
   .stat { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 16px 24px; min-width: 120px; }
   .stat-value { font-size: 32px; font-weight: bold; }
   .stat-label { color: #8b949e; font-size: 13px; margin-top: 4px; }
@@ -215,12 +230,18 @@ function generateHTML(comparison, baselineResults, currentResults, outputDir) {
   .stat-removed .stat-value { color: #f85149; }
   .stat-unchanged .stat-value { color: #8b949e; }
   .stat-failures .stat-value { color: #f85149; }
+  .view-toggle { display: flex; gap: 0; margin-bottom: 32px; }
+  .view-toggle button { background: #161b22; border: 1px solid #30363d; color: #8b949e; padding: 8px 20px; font-size: 13px; cursor: pointer; transition: all 0.15s; }
+  .view-toggle button:first-child { border-radius: 6px 0 0 6px; }
+  .view-toggle button:last-child { border-radius: 0 6px 6px 0; border-left: none; }
+  .view-toggle button.active { background: #1f6feb; color: #f0f6fc; border-color: #1f6feb; }
+  .view-toggle button:hover:not(.active) { color: #f0f6fc; }
   .section { margin-bottom: 40px; }
   .section-title { font-size: 18px; color: #f0f6fc; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 1px solid #30363d; }
   .comparison-card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; margin-bottom: 24px; overflow: hidden; }
   .comparison-header { padding: 12px 16px; border-bottom: 1px solid #30363d; display: flex; justify-content: space-between; align-items: center; }
   .comparison-header h3 { font-size: 14px; color: #f0f6fc; font-family: monospace; }
-  .comparison-meta { font-size: 12px; color: #8b949e; }
+  .comparison-meta { font-size: 12px; color: #8b949e; display: flex; align-items: center; gap: 8px; }
   .comparison-images { display: flex; gap: 0; }
   .comparison-images > div { flex: 1; padding: 16px; text-align: center; }
   .comparison-images > div:not(:last-child) { border-right: 1px solid #30363d; }
@@ -232,12 +253,29 @@ function generateHTML(comparison, baselineResults, currentResults, outputDir) {
   .badge-changed { background: #d299221a; color: #d29922; }
   .badge-added { background: #3fb9501a; color: #3fb950; }
   .badge-removed { background: #f851491a; color: #f85149; }
-  .badge-resized { background: #a371f71a; color: #a371f7; margin-left: 8px; }
+  .badge-unchanged { background: #8b949e1a; color: #8b949e; }
+  .badge-resized { background: #a371f71a; color: #a371f7; }
   .failures { background: #f851491a; border: 1px solid #f8514933; border-radius: 8px; padding: 16px; margin-bottom: 16px; }
   .failures h4 { color: #f85149; margin-bottom: 8px; }
   .failures pre { font-size: 12px; color: #c9d1d9; white-space: pre-wrap; word-break: break-word; max-height: 300px; overflow-y: auto; background: #0d1117; padding: 12px; border-radius: 4px; margin-top: 8px; }
   .no-changes { text-align: center; padding: 48px; color: #8b949e; }
   .no-changes p { font-size: 18px; margin-bottom: 8px; }
+  .feature-link { color: #58a6ff; text-decoration: none; font-size: 12px; }
+  .feature-link:hover { text-decoration: underline; }
+  .feature-group { margin-bottom: 40px; }
+  .feature-group-header { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 1px solid #30363d; }
+  .feature-group-header h2 { font-size: 18px; color: #f0f6fc; }
+  .feature-group-badges { display: flex; gap: 6px; }
+  .feature-toc { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 16px; margin-bottom: 32px; }
+  .feature-toc h3 { font-size: 14px; color: #f0f6fc; margin-bottom: 12px; }
+  .feature-toc-list { list-style: none; display: flex; flex-wrap: wrap; gap: 8px; }
+  .feature-toc-list li a { display: inline-flex; align-items: center; gap: 6px; color: #58a6ff; text-decoration: none; font-size: 13px; padding: 4px 10px; background: #0d1117; border-radius: 6px; border: 1px solid #30363d; }
+  .feature-toc-list li a:hover { border-color: #58a6ff; }
+  .feature-toc-list .toc-dots { display: flex; gap: 3px; }
+  .feature-toc-list .toc-dot { width: 8px; height: 8px; border-radius: 50%; }
+  .toc-dot-changed { background: #d29922; }
+  .toc-dot-added { background: #3fb950; }
+  .toc-dot-removed { background: #f85149; }
 </style>
 </head>
 <body>
@@ -251,7 +289,16 @@ function generateHTML(comparison, baselineResults, currentResults, outputDir) {
   <div class="stat stat-unchanged"><div class="stat-value">${summary.unchanged}</div><div class="stat-label">Unchanged</div></div>
   ${hasFailures ? `<div class="stat stat-failures"><div class="stat-value">${summary.baselineFailures + summary.currentFailures}</div><div class="stat-label">Test Failures</div></div>` : ''}
 </div>
+
+<div class="view-toggle">
+  <button class="active" onclick="setView('by-status')">By Status</button>
+  <button onclick="setView('by-feature')">By Feature</button>
+</div>
 `
+
+  // ── By-status view (original flat view) ──
+
+  html += `<div id="view-by-status">\n`
 
   // Assertion failures section
   if (hasFailures) {
@@ -277,59 +324,27 @@ function generateHTML(comparison, baselineResults, currentResults, outputDir) {
   // Changed screenshots
   if (changed.length > 0) {
     html += `<div class="section">\n<h2 class="section-title">Changed Screenshots (${changed.length})</h2>\n`
-
     for (const item of changed) {
-      const resizedBadge = item.dimensionsChanged
-        ? `<span class="badge badge-resized">${item.baselineSize.width}×${item.baselineSize.height} → ${item.currentSize.width}×${item.currentSize.height}</span>`
-        : ''
-
-      html += `<div class="comparison-card">
-<div class="comparison-header">
-  <h3>${item.key}</h3>
-  <div class="comparison-meta"><span class="badge badge-changed">${item.diffPercent}% diff</span>${resizedBadge}</div>
-</div>
-<div class="comparison-images">
-  <div><label>Baseline (${tag})</label><img src="baseline/${item.key}" alt="baseline"></div>
-  <div><label>Current (${ref})</label><img src="current/${item.key}" alt="current"></div>
-  <div><label>Diff</label><img src="${item.diffPath}" alt="diff"></div>
-</div>
-</div>\n`
+      html += renderComparisonCard(item, 'changed', tag, ref)
     }
-
     html += `</div>\n`
   }
 
   // Added screenshots
   if (added.length > 0) {
     html += `<div class="section">\n<h2 class="section-title">Added Screenshots (${added.length})</h2>\n`
-
     for (const item of added) {
-      html += `<div class="comparison-card">
-<div class="comparison-header">
-  <h3>${item.key}</h3>
-  <div class="comparison-meta"><span class="badge badge-added">new</span></div>
-</div>
-<div class="single-image"><img src="current/${item.key}" alt="added"></div>
-</div>\n`
+      html += renderSingleCard(item, 'added', 'current')
     }
-
     html += `</div>\n`
   }
 
   // Removed screenshots
   if (removed.length > 0) {
     html += `<div class="section">\n<h2 class="section-title">Removed Screenshots (${removed.length})</h2>\n`
-
     for (const item of removed) {
-      html += `<div class="comparison-card">
-<div class="comparison-header">
-  <h3>${item.key}</h3>
-  <div class="comparison-meta"><span class="badge badge-removed">removed</span></div>
-</div>
-<div class="single-image"><img src="baseline/${item.key}" alt="removed"></div>
-</div>\n`
+      html += renderSingleCard(item, 'removed', 'baseline')
     }
-
     html += `</div>\n`
   }
 
@@ -341,9 +356,145 @@ function generateHTML(comparison, baselineResults, currentResults, outputDir) {
 </div>\n`
   }
 
+  html += `</div>\n` // end view-by-status
+
+  // ── By-feature view ──
+
+  html += `<div id="view-by-feature" style="display:none">\n`
+
+  // Feature table of contents
+  const featuresWithChanges = featureNames.filter(f => {
+    const g = featureMap[f]
+    return g.changed.length > 0 || g.added.length > 0 || g.removed.length > 0
+  })
+
+  if (featuresWithChanges.length > 0) {
+    html += `<div class="feature-toc"><h3>Features with changes (${featuresWithChanges.length})</h3><ul class="feature-toc-list">\n`
+    for (const name of featuresWithChanges) {
+      const g = featureMap[name]
+      let dots = ''
+      if (g.changed.length) dots += `<span class="toc-dot toc-dot-changed"></span>`
+      if (g.added.length) dots += `<span class="toc-dot toc-dot-added"></span>`
+      if (g.removed.length) dots += `<span class="toc-dot toc-dot-removed"></span>`
+      html += `<li><a href="#feature-${name}"><span class="toc-dots">${dots}</span>${formatFeatureName(name)}</a></li>\n`
+    }
+    html += `</ul></div>\n`
+  }
+
+  // Assertion failures (duplicated in feature view for convenience)
+  if (hasFailures) {
+    html += `<div class="section">\n<h2 class="section-title">Test Failures</h2>\n`
+    if (baselineResults?.failed > 0) {
+      html += `<div class="failures">
+<h4>Baseline failures (${tag}): ${baselineResults.failed} feature(s)</h4>
+<pre>${escapeHtml(baselineResults.errors || 'No error output captured')}</pre>
+</div>\n`
+    }
+    if (currentResults?.failed > 0) {
+      html += `<div class="failures">
+<h4>Current failures (${ref}): ${currentResults.failed} feature(s)</h4>
+<pre>${escapeHtml(currentResults.errors || 'No error output captured')}</pre>
+</div>\n`
+    }
+    html += `</div>\n`
+  }
+
+  // Each feature group
+  for (const name of featureNames) {
+    const g = featureMap[name]
+    const hasChanges = g.changed.length > 0 || g.added.length > 0 || g.removed.length > 0
+
+    // Skip features with no changes in by-feature view (they're just noise)
+    if (!hasChanges) continue
+
+    html += `<div class="feature-group" id="feature-${name}">\n`
+    html += `<div class="feature-group-header"><h2>${formatFeatureName(name)}</h2><div class="feature-group-badges">`
+    if (g.changed.length) html += `<span class="badge badge-changed">${g.changed.length} changed</span>`
+    if (g.added.length) html += `<span class="badge badge-added">${g.added.length} added</span>`
+    if (g.removed.length) html += `<span class="badge badge-removed">${g.removed.length} removed</span>`
+    if (g.unchanged.length) html += `<span class="badge badge-unchanged">${g.unchanged.length} unchanged</span>`
+    html += `</div></div>\n`
+
+    for (const item of g.changed) {
+      html += renderComparisonCard(item, 'changed', tag, ref)
+    }
+    for (const item of g.added) {
+      html += renderSingleCard(item, 'added', 'current')
+    }
+    for (const item of g.removed) {
+      html += renderSingleCard(item, 'removed', 'baseline')
+    }
+
+    html += `</div>\n`
+  }
+
+  // No changes message for feature view
+  if (featuresWithChanges.length === 0 && !hasFailures) {
+    html += `<div class="no-changes">
+<p>No visual changes detected</p>
+<p class="subtitle">All ${summary.unchanged} screenshots across ${featureNames.length} features are identical between ${tag} and ${ref}</p>
+</div>\n`
+  }
+
+  html += `</div>\n` // end view-by-feature
+
+  // View toggle script
+  html += `<script>
+function setView(view) {
+  document.getElementById('view-by-status').style.display = view === 'by-status' ? '' : 'none';
+  document.getElementById('view-by-feature').style.display = view === 'by-feature' ? '' : 'none';
+  document.querySelectorAll('.view-toggle button').forEach(btn => {
+    btn.classList.toggle('active', btn.textContent.toLowerCase().includes(view.replace('by-', '')));
+  });
+  history.replaceState(null, '', '#' + view);
+}
+// Restore view from URL hash
+if (location.hash === '#by-feature') setView('by-feature');
+</script>\n`
+
   html += `</body>\n</html>\n`
 
   fs.writeFileSync(path.join(outputDir, 'index.html'), html)
+}
+
+function renderComparisonCard(item, status, tag, ref) {
+  const feature = item.key.split('/')[0]
+  const resizedBadge = item.dimensionsChanged
+    ? `<span class="badge badge-resized">${item.baselineSize.width}×${item.baselineSize.height} → ${item.currentSize.width}×${item.currentSize.height}</span>`
+    : ''
+
+  return `<div class="comparison-card">
+<div class="comparison-header">
+  <h3>${item.key}</h3>
+  <div class="comparison-meta">
+    <a class="feature-link" href="#feature-${feature}" onclick="setView('by-feature')">${formatFeatureName(feature)}</a>
+    <span class="badge badge-changed">${item.diffPercent}% diff</span>${resizedBadge}
+  </div>
+</div>
+<div class="comparison-images">
+  <div><label>Baseline (${tag})</label><img src="baseline/${item.key}" alt="baseline" loading="lazy"></div>
+  <div><label>Current (${ref})</label><img src="current/${item.key}" alt="current" loading="lazy"></div>
+  <div><label>Diff</label><img src="${item.diffPath}" alt="diff" loading="lazy"></div>
+</div>
+</div>\n`
+}
+
+function renderSingleCard(item, status, imgDir) {
+  const feature = item.key.split('/')[0]
+  return `<div class="comparison-card">
+<div class="comparison-header">
+  <h3>${item.key}</h3>
+  <div class="comparison-meta">
+    <a class="feature-link" href="#feature-${feature}" onclick="setView('by-feature')">${formatFeatureName(feature)}</a>
+    <span class="badge badge-${status}">${status === 'added' ? 'new' : 'removed'}</span>
+  </div>
+</div>
+<div class="single-image"><img src="${imgDir}/${item.key}" alt="${status}" loading="lazy"></div>
+</div>\n`
+}
+
+function formatFeatureName(slug) {
+  return slug.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
 }
 
 function escapeHtml(str) {

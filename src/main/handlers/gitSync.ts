@@ -1,6 +1,6 @@
 import { IpcMain } from 'electron'
 import simpleGit from 'simple-git'
-import { HandlerContext, expandHomePath } from './types'
+import { HandlerContext, E2EScenario, expandHomePath } from './types'
 
 async function handlePullOriginMain(ctx: HandlerContext, repoPath: string) {
   if (ctx.isE2ETest) {
@@ -100,7 +100,7 @@ async function handleSetConfig(ctx: HandlerContext, repoPath: string, key: strin
 
 async function handleBranchChanges(ctx: HandlerContext, repoPath: string, baseBranch?: string) {
   if (ctx.isE2ETest) {
-    if (ctx.isScreenshotMode) {
+    if (ctx.e2eScenario === E2EScenario.Marketing) {
       return {
         files: [
           { path: 'src/middleware/auth.ts', status: 'modified' },
@@ -180,7 +180,7 @@ async function handleBranchChanges(ctx: HandlerContext, repoPath: string, baseBr
 
 async function handleBranchCommits(ctx: HandlerContext, repoPath: string, baseBranch?: string) {
   if (ctx.isE2ETest) {
-    if (ctx.isScreenshotMode) {
+    if (ctx.e2eScenario === E2EScenario.Marketing) {
       return {
         commits: [
           { hash: 'a1b2c3d4e5f60', shortHash: 'a1b2c3d', message: 'Add JWT token refresh with rotation', author: 'Claude', date: '2025-01-15T14:30:00Z', pushed: false },

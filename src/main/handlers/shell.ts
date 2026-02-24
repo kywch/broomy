@@ -23,6 +23,9 @@ export function register(ipcMain: IpcMain, ctx: HandlerContext): void {
   })
 
   ipcMain.handle('shell:openExternal', async (_event, url: string) => {
+    if (ctx.isE2ETest) {
+      return
+    }
     await shell.openExternal(url)
   })
 

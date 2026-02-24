@@ -5,9 +5,23 @@ import { join } from 'path'
 import { homedir, tmpdir } from 'os'
 import { normalizePath } from '../platform'
 
+/**
+ * E2E test scenarios control which mock data is loaded.
+ *
+ * - default: 3 sessions with issue data, used by most feature tests.
+ * - marketing: 8 sessions with rich git status and file trees.
+ *    ⚠️  This scenario generates the screenshots used on the Broomy marketing
+ *    website. Edit its mock data with care — changes affect published content.
+ */
+export enum E2EScenario {
+  Default = 'default',
+  /** ⚠️ Used for the Broomy marketing website. Edit mock data with care. */
+  Marketing = 'marketing',
+}
+
 export interface HandlerContext {
   isE2ETest: boolean
-  isScreenshotMode: boolean
+  e2eScenario: E2EScenario
   isDev: boolean
   isWindows: boolean
   ptyProcesses: Map<string, IPty>
@@ -63,8 +77,8 @@ export const expandHomePath = (path: string): string => {
 }
 
 // E2E mock data
-export function getE2EDemoSessions(isScreenshotMode: boolean) {
-  return isScreenshotMode ? [
+export function getE2EDemoSessions(scenario: E2EScenario) {
+  return scenario === E2EScenario.Marketing ? [
     { id: '1', name: 'backend-api', directory: normalizePath(join(tmpdir(), 'broomy-e2e-backend-api')), agentId: 'claude' },
     { id: '2', name: 'web-dashboard', directory: normalizePath(join(tmpdir(), 'broomy-e2e-web-dashboard')), agentId: 'codex' },
     { id: '3', name: 'mobile-app', directory: normalizePath(join(tmpdir(), 'broomy-e2e-mobile-app')), agentId: 'gemini' },
@@ -86,8 +100,8 @@ export function getE2EDemoRepos() {
   ]
 }
 
-export function getE2EMockBranches(isScreenshotMode: boolean): Record<string, string> {
-  return isScreenshotMode ? {
+export function getE2EMockBranches(scenario: E2EScenario): Record<string, string> {
+  return scenario === E2EScenario.Marketing ? {
     [normalizePath(join(tmpdir(), 'broomy-e2e-backend-api'))]: 'feature/jwt-auth',
     [normalizePath(join(tmpdir(), 'broomy-e2e-web-dashboard'))]: 'fix/dashboard-perf',
     [normalizePath(join(tmpdir(), 'broomy-e2e-mobile-app'))]: 'feature/push-notifs',

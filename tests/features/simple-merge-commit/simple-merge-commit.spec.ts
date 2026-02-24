@@ -56,28 +56,21 @@ async function openSourceControl(p: Page) {
   await p.waitForTimeout(500)
 }
 
-/** Set the mock merge state and reload the page to pick it up */
+/** Reset app with the given mock merge state */
 async function setMockMerge(mockMerge: string) {
-  await electronApp.evaluate(({ app }, merge) => {
-    process.env.E2E_MOCK_MERGE = merge
-  }, mockMerge)
-  await page.reload()
-  await page.waitForLoadState('domcontentloaded')
-  await page.waitForSelector('#root > div', { timeout: 15000 })
-  await page.waitForTimeout(2000)
+  const result = await resetApp({ scenario: 'marketing', mockMerge })
+  electronApp = result.electronApp
+  page = result.page
 }
 
 test.beforeAll(async () => {
   await fs.promises.mkdir(SCREENSHOTS, { recursive: true })
-  ;({ electronApp, page } = await resetApp())
+  const result = await resetApp({ scenario: 'marketing' })
+  electronApp = result.electronApp
+  page = result.page
 })
 
 test.afterAll(async () => {
-  // Clean up env var
-  await electronApp.evaluate(() => {
-    delete process.env.E2E_MOCK_MERGE
-  })
-
   await generateFeaturePage(
     {
       title: 'Simple Merge Commit',
