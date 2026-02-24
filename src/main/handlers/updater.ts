@@ -7,7 +7,6 @@ import { HandlerContext } from './types'
 export type UpdateCheckResult = {
   updateAvailable: boolean
   version?: string
-  releaseNotes?: string
 }
 
 export function register(ipcMain: IpcMain, ctx: HandlerContext): void {
@@ -18,7 +17,6 @@ export function register(ipcMain: IpcMain, ctx: HandlerContext): void {
         return {
           updateAvailable: true,
           version: '0.9.0',
-          releaseNotes: 'Dark mode support\nImproved performance\nBug fixes',
         }
       }
       return { updateAvailable: false }
@@ -56,15 +54,9 @@ export function register(ipcMain: IpcMain, ctx: HandlerContext): void {
       if (!isNewer) {
         return { updateAvailable: false }
       }
-      const releaseNotes = typeof info.releaseNotes === 'string'
-        ? info.releaseNotes
-        : Array.isArray(info.releaseNotes)
-          ? info.releaseNotes.map((n) => (typeof n === 'string' ? n : n.note)).join('\n')
-          : undefined
       return {
         updateAvailable: true,
         version: info.version,
-        releaseNotes,
       }
     } catch {
       // Network errors, rate limits, etc. — silently fail
