@@ -187,10 +187,17 @@ async function checkForUpdatesFromMenu(): Promise<void> {
     const result = await autoUpdater.checkForUpdates()
     if (result && result.updateInfo.version !== autoUpdater.currentVersion?.version) {
       // The renderer's VersionIndicator will handle the UI via IPC events
+      const info = result.updateInfo
+      const releaseNotes = typeof info.releaseNotes === 'string'
+        ? info.releaseNotes
+        : Array.isArray(info.releaseNotes)
+          ? info.releaseNotes.map((n) => (typeof n === 'string' ? n : n.note)).join('\n')
+          : undefined
       const focusedWindow = BrowserWindow.getFocusedWindow()
       if (focusedWindow) {
         focusedWindow.webContents.send('updater:updateAvailable', {
-          version: result.updateInfo.version,
+          version: info.version,
+          releaseNotes,
         })
       }
     } else {

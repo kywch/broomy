@@ -1,63 +1,17 @@
-import { useState, useEffect, useCallback } from 'react'
-import type { UpdateCheckResult } from '../../preload/apis/shell'
-
-type UpdateState =
-  | { status: 'idle' }
-  | { status: 'available'; version: string; releaseNotes?: string }
-  | { status: 'downloading'; percent: number }
-  | { status: 'ready' }
+import { useUpdateState } from '../hooks/useUpdateState'
 
 export default function VersionIndicator() {
-  const [version, setVersion] = useState<string | null>(null)
-  const [updateState, setUpdateState] = useState<UpdateState>({ status: 'idle' })
-  const [showPopover, setShowPopover] = useState(false)
+  const {
+    updateState, currentVersion, popoverOpen, setPopoverOpen,
+    handleDownload, handleInstall,
+  } = useUpdateState()
 
-  useEffect(() => {
-    void window.app.getVersion().then(setVersion)
-  }, [])
-
-  // Check for updates once on mount
-  useEffect(() => {
-    void window.update.checkForUpdates().then((result: UpdateCheckResult) => {
-      if (result.updateAvailable && result.version) {
-        setUpdateState({
-          status: 'available',
-          version: result.version,
-          releaseNotes: result.releaseNotes,
-        })
-      }
-    })
-  }, [])
-
-  // Listen for download progress and completion
-  useEffect(() => {
-    const removeProgress = window.update.onDownloadProgress((percent) => {
-      setUpdateState({ status: 'downloading', percent })
-    })
-    const removeDownloaded = window.update.onUpdateDownloaded(() => {
-      setUpdateState({ status: 'ready' })
-    })
-    return () => {
-      removeProgress()
-      removeDownloaded()
-    }
-  }, [])
-
-  const handleDownload = useCallback(async () => {
-    setUpdateState({ status: 'downloading', percent: 0 })
-    await window.update.downloadUpdate()
-  }, [])
-
-  const handleInstall = useCallback(() => {
-    window.update.installUpdate()
-  }, [])
-
-  if (!version || updateState.status === 'idle') return null
+  if (!currentVersion || updateState.status === 'idle') return null
 
   return (
     <div className="relative">
       <button
-        onClick={() => setShowPopover(!showPopover)}
+        onClick={() => setPopoverOpen(!popoverOpen)}
         className="px-1.5 py-0.5 text-[10px] font-medium rounded transition-colors bg-accent/20 text-accent border border-accent/30 hover:bg-accent/30"
         title="Update available"
       >
@@ -65,13 +19,13 @@ export default function VersionIndicator() {
         <span className="ml-1 inline-block w-1.5 h-1.5 rounded-full bg-accent" />
       </button>
 
-      {showPopover && (
+      {popoverOpen && (
         <>
           {/* Backdrop to close popover */}
-          <div className="fixed inset-0 z-40" onClick={() => setShowPopover(false)} />
+          <div className="fixed inset-0 z-40" onClick={() => setPopoverOpen(false)} />
           <div className="absolute right-0 top-full mt-1 z-50 w-64 bg-bg-secondary border border-border rounded-lg shadow-xl p-3">
             <div className="text-xs text-text-secondary mb-1">Current version</div>
-            <div className="text-sm font-medium text-text-primary mb-3">v{version}</div>
+            <div className="text-sm font-medium text-text-primary mb-3">v{currentVersion}</div>
 
             {updateState.status === 'available' && (
               <>
@@ -83,7 +37,7 @@ export default function VersionIndicator() {
                   </div>
                 )}
                 <button
-                  onClick={handleDownload}
+                  onClick={() => void handleDownload()}
                   className="w-full px-3 py-1.5 text-xs rounded bg-accent text-white hover:bg-accent/80 transition-colors"
                 >
                   Download Update

@@ -86,6 +86,7 @@ const mockUpdate: Mocked<UpdateApi> = {
   installUpdate: vi.fn(),
   onDownloadProgress: vi.fn().mockReturnValue(() => {}),
   onUpdateDownloaded: vi.fn().mockReturnValue(() => {}),
+  onUpdateAvailable: vi.fn().mockReturnValue(() => {}),
 }
 
 // Mock window.profiles
