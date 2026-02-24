@@ -31,6 +31,7 @@ export type UpdateApi = {
   installUpdate: () => void
   onDownloadProgress: (callback: (percent: number) => void) => () => void
   onUpdateDownloaded: (callback: () => void) => () => void
+  onUpdateAvailable: (callback: (info: { version: string; releaseNotes?: string }) => void) => () => void
 }
 
 export const shellApi: ShellApi = {
@@ -64,5 +65,10 @@ export const updateApi: UpdateApi = {
     const handler = () => callback()
     ipcRenderer.on('updater:updateDownloaded', handler)
     return () => ipcRenderer.removeListener('updater:updateDownloaded', handler)
+  },
+  onUpdateAvailable: (callback) => {
+    const handler = (_event: Electron.IpcRendererEvent, info: { version: string; releaseNotes?: string }) => callback(info)
+    ipcRenderer.on('updater:updateAvailable', handler)
+    return () => ipcRenderer.removeListener('updater:updateAvailable', handler)
   },
 }

@@ -15,6 +15,7 @@ import ProfileChip from './components/ProfileChip'
 import HelpModal from './components/HelpModal'
 import ShortcutsModal from './components/ShortcutsModal'
 import { useSessionStore, type Session, type SessionStatus, type LayoutSizes } from './store/sessions'
+import { useUpdateStore } from './hooks/useUpdateState'
 import { useAgentStore } from './store/agents'
 import { useRepoStore } from './store/repos'
 import { useProfileStore } from './store/profiles'
@@ -315,9 +316,10 @@ function AppContent() {
 function App() {
   const { toolbarPanels, setToolbarPanels } = useSessionStore()
 
-  // Expose store for Playwright screenshot manipulation
+  // Expose stores for Playwright screenshot manipulation
   useEffect(() => {
     (window as unknown as Record<string, unknown>).__sessionStore = useSessionStore
+    ;(window as unknown as Record<string, unknown>).__updateStore = useUpdateStore
   }, [])
 
   return (
