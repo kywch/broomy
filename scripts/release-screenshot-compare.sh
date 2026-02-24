@@ -45,6 +45,97 @@ fail() {
   echo -e "  ${RED}✗${RESET} $1"
 }
 
+# Run all feature walkthroughs in a single Playwright invocation,
+# then copy screenshots to the target directory.
+# Args: $1 = label (e.g. "baseline"), $2 = target dir, $3 = results json path
+run_walkthroughs() {
+  local label="$1"
+  local target_dir="$2"
+  local results_json="$3"
+  local ref_label="$4"
+
+  # Clean all existing screenshots before running
+  for feature in "${FEATURES[@]}"; do
+    rm -rf "$FEATURES_DIR/$feature/screenshots"
+  done
+
+  # Build test paths for all features
+  local test_paths=()
+  for feature in "${FEATURES[@]}"; do
+    test_paths+=("tests/features/$feature/")
+  done
+
+  info "Running all $FEATURE_COUNT feature walkthroughs in one batch..."
+
+  local output_file
+  output_file=$(mktemp)
+  local exit_code=0
+
+  # Run all features in a single Playwright invocation
+  if npx playwright test --config playwright.features.config.ts "${test_paths[@]}" 2>&1 | tee "$output_file"; then
+    exit_code=0
+  else
+    exit_code=$?
+  fi
+
+  # Collect screenshots and determine per-feature pass/fail from output
+  local passed=0
+  local failed=0
+  local failed_features=""
+
+  for feature in "${FEATURES[@]}"; do
+    if [ -d "$FEATURES_DIR/$feature/screenshots" ]; then
+      # Feature produced screenshots — it passed
+      mkdir -p "$target_dir/$feature"
+      cp "$FEATURES_DIR/$feature/screenshots/"*.png "$target_dir/$feature/" 2>/dev/null || true
+      local count
+      count=$(ls "$target_dir/$feature/"*.png 2>/dev/null | wc -l | tr -d ' ')
+      success "$feature — $count screenshot(s)"
+      passed=$((passed + 1))
+    else
+      # No screenshots — it failed
+      fail "$feature — no screenshots (test failed)"
+      failed=$((failed + 1))
+      failed_features="$failed_features $feature"
+    fi
+
+    # Clean up screenshots from tests/features/ so they don't get committed
+    rm -rf "$FEATURES_DIR/$feature/screenshots"
+  done
+
+  # Also clean up any generated HTML in tests/features/ (gitignored but still messy)
+  for feature in "${FEATURES[@]}"; do
+    rm -f "$FEATURES_DIR/$feature/index.html"
+  done
+  rm -f "$FEATURES_DIR/index.html"
+
+  # Write results JSON
+  local errors_text=""
+  if [ $failed -gt 0 ]; then
+    errors_text=$(cat "$output_file")
+  fi
+  rm -f "$output_file"
+
+  node -e "
+const fs = require('fs');
+const results = {
+  ref: process.argv[1],
+  passed: parseInt(process.argv[2]),
+  failed: parseInt(process.argv[3]),
+  failedFeatures: process.argv[4].trim().split(/\s+/).filter(Boolean),
+  errors: process.argv[5]
+};
+fs.writeFileSync(process.argv[6], JSON.stringify(results, null, 2));
+" "$ref_label" "$passed" "$failed" "$failed_features" "$errors_text" "$results_json"
+
+  echo ""
+  if [ $failed -eq 0 ]; then
+    success "All $passed walkthroughs passed"
+  else
+    success "$passed passed, $failed failed"
+  fi
+}
+
 # ──────────────────────────────────────────────────────────────
 # Step 1: Pre-flight checks
 # ──────────────────────────────────────────────────────────────
@@ -105,7 +196,7 @@ rm -rf "$OUTPUT_DIR"
 mkdir -p "$OUTPUT_DIR/baseline" "$OUTPUT_DIR/current" "$OUTPUT_DIR/diffs"
 success "Created $OUTPUT_DIR/"
 
-# List available features
+# List available features (from current branch, before checkout)
 FEATURES=()
 for dir in "$FEATURES_DIR"/*/; do
   name=$(basename "$dir")
@@ -131,56 +222,7 @@ pnpm install --frozen-lockfile 2>/dev/null || pnpm install
 info "Building app..."
 pnpm build
 
-info "Running $FEATURE_COUNT feature walkthroughs (this takes a while)..."
-
-# Run feature docs and capture results
-BASELINE_RESULTS="{}"
-baseline_passed=0
-baseline_failed=0
-baseline_errors=""
-
-for i in "${!FEATURES[@]}"; do
-  feature="${FEATURES[$i]}"
-  num=$((i + 1))
-  echo -ne "  ${DIM}[$num/$FEATURE_COUNT]${RESET} $feature... "
-
-  # Clean any existing screenshots for this feature
-  rm -rf "$FEATURES_DIR/$feature/screenshots"
-
-  if output=$(npx playwright test --config playwright.features.config.ts "tests/features/$feature/" 2>&1); then
-    echo -e "${GREEN}passed${RESET}"
-    baseline_passed=$((baseline_passed + 1))
-
-    # Copy screenshots to baseline
-    if [ -d "$FEATURES_DIR/$feature/screenshots" ]; then
-      mkdir -p "$OUTPUT_DIR/baseline/$feature"
-      cp "$FEATURES_DIR/$feature/screenshots/"*.png "$OUTPUT_DIR/baseline/$feature/" 2>/dev/null || true
-      count=$(ls "$OUTPUT_DIR/baseline/$feature/"*.png 2>/dev/null | wc -l | tr -d ' ')
-      echo -e "    ${DIM}→ $count screenshot(s) captured${RESET}"
-    fi
-  else
-    echo -e "${RED}failed${RESET}"
-    baseline_failed=$((baseline_failed + 1))
-    baseline_errors="$baseline_errors\n--- $feature ---\n$output"
-  fi
-
-  # Clean up screenshots from tests/features/ so they don't get committed
-  rm -rf "$FEATURES_DIR/$feature/screenshots"
-done
-
-# Write baseline results JSON
-node -e "
-const results = {
-  tag: '$LAST_TAG',
-  passed: $baseline_passed,
-  failed: $baseline_failed,
-  features: $(printf '%s\n' "${FEATURES[@]}" | jq -R . | jq -s .),
-  errors: $(echo -e "$baseline_errors" | jq -Rs .)
-};
-require('fs').writeFileSync('$OUTPUT_DIR/baseline-results.json', JSON.stringify(results, null, 2));
-"
-
-success "Baseline: $baseline_passed passed, $baseline_failed failed"
+run_walkthroughs "baseline" "$OUTPUT_DIR/baseline" "$OUTPUT_DIR/baseline-results.json" "$LAST_TAG"
 
 # ──────────────────────────────────────────────────────────────
 # Step 5: Generate current screenshots
@@ -196,54 +238,7 @@ pnpm install --frozen-lockfile 2>/dev/null || pnpm install
 info "Building app..."
 pnpm build
 
-info "Running $FEATURE_COUNT feature walkthroughs..."
-
-current_passed=0
-current_failed=0
-current_errors=""
-
-for i in "${!FEATURES[@]}"; do
-  feature="${FEATURES[$i]}"
-  num=$((i + 1))
-  echo -ne "  ${DIM}[$num/$FEATURE_COUNT]${RESET} $feature... "
-
-  # Clean any existing screenshots for this feature
-  rm -rf "$FEATURES_DIR/$feature/screenshots"
-
-  if output=$(npx playwright test --config playwright.features.config.ts "tests/features/$feature/" 2>&1); then
-    echo -e "${GREEN}passed${RESET}"
-    current_passed=$((current_passed + 1))
-
-    # Copy screenshots to current
-    if [ -d "$FEATURES_DIR/$feature/screenshots" ]; then
-      mkdir -p "$OUTPUT_DIR/current/$feature"
-      cp "$FEATURES_DIR/$feature/screenshots/"*.png "$OUTPUT_DIR/current/$feature/" 2>/dev/null || true
-      count=$(ls "$OUTPUT_DIR/current/$feature/"*.png 2>/dev/null | wc -l | tr -d ' ')
-      echo -e "    ${DIM}→ $count screenshot(s) captured${RESET}"
-    fi
-  else
-    echo -e "${RED}failed${RESET}"
-    current_failed=$((current_failed + 1))
-    current_errors="$current_errors\n--- $feature ---\n$output"
-  fi
-
-  # Clean up screenshots from tests/features/ so they don't get committed
-  rm -rf "$FEATURES_DIR/$feature/screenshots"
-done
-
-# Write current results JSON
-node -e "
-const results = {
-  ref: '$ORIGINAL_REF',
-  passed: $current_passed,
-  failed: $current_failed,
-  features: $(printf '%s\n' "${FEATURES[@]}" | jq -R . | jq -s .),
-  errors: $(echo -e "$current_errors" | jq -Rs .)
-};
-require('fs').writeFileSync('$OUTPUT_DIR/current-results.json', JSON.stringify(results, null, 2));
-"
-
-success "Current: $current_passed passed, $current_failed failed"
+run_walkthroughs "current" "$OUTPUT_DIR/current" "$OUTPUT_DIR/current-results.json" "$ORIGINAL_REF"
 
 # ──────────────────────────────────────────────────────────────
 # Step 6: Compare screenshots
@@ -264,7 +259,7 @@ if [ -f "$REPORT" ]; then
   # Print summary from comparison.json
   if [ -f "$OUTPUT_DIR/comparison.json" ]; then
     node -e "
-    const c = require('./$OUTPUT_DIR/comparison.json');
+    const c = JSON.parse(require('fs').readFileSync('$OUTPUT_DIR/comparison.json', 'utf-8'));
     const { unchanged, changed, added, removed } = c.summary;
     console.log('');
     console.log('  Summary:');
