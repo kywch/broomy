@@ -4,8 +4,8 @@ Analyze the release screenshot comparison report and produce a readiness assessm
 
 1. Read `release-compare/comparison.json` to get the structured diff data.
 2. Read `release-compare/index.html` to understand the full visual comparison (this is the detailed screenshot comparison report that humans should also review).
-3. Read `release-compare/baseline-results.json` and `release-compare/current-results.json` to see test pass/fail results.
-4. Run `git tag --list 'v*' --sort=-version:refSort | head -n 1` to find the last release tag.
+3. Read `release-compare/current-results.json` to see test pass/fail results for the current code. (Baseline failures are expected for new features and can be ignored.)
+4. Run `git tag --list 'v*' --sort=-v:refname | head -n 1` to find the last release tag.
 5. Run `git log <last-tag>..HEAD --oneline` to get the list of commits since the last release.
 6. For each changed screenshot, analyze whether the change looks intentional (correlates with a commit/feature) or unintentional (possible regression).
 7. For each test assertion failure, determine if it reflects a desired behavioral change or a bug.
