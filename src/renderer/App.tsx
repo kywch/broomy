@@ -28,6 +28,7 @@ import { useSessionLifecycle } from './hooks/useSessionLifecycle'
 import { useAppCallbacks } from './hooks/useAppCallbacks'
 import { usePanelsMap } from './hooks/usePanelsMap'
 import { useHelpMenu } from './hooks/useHelpMenu'
+import { useGitBranchWatcher } from './hooks/useGitBranchWatcher'
 import { useSessionKeyboardCallbacks } from './hooks/useSessionKeyboardCallbacks'
 import { focusSearchInput } from './utils/focusHelpers'
 
@@ -100,14 +101,24 @@ function GitMissingBanner() {
 }
 
 function AppContent() {
+  // Data fields use individual selectors to avoid unnecessary re-renders
+  const sessions = useSessionStore(s => s.sessions)
+  const activeSessionId = useSessionStore(s => s.activeSessionId)
+  const isLoading = useSessionStore(s => s.isLoading)
+  const sidebarWidth = useSessionStore(s => s.sidebarWidth)
+  const toolbarPanels = useSessionStore(s => s.toolbarPanels)
+  const globalPanelVisibility = useSessionStore(s => s.globalPanelVisibility)
+  // Actions are referentially stable — destructure together
   const {
-    sessions, activeSessionId, isLoading, sidebarWidth, toolbarPanels, globalPanelVisibility,
-    loadSessions, addSession, removeSession, setActiveSession, refreshAllBranches,
+    loadSessions, addSession, removeSession, setActiveSession,
     togglePanel, toggleGlobalPanel, setSidebarWidth, setToolbarPanels,
     selectFile, setExplorerFilter, setFileViewerPosition, updateLayoutSize,
     markSessionRead, recordPushToMain, clearPushToMain, markHasHadCommits,
     updateBranchStatus, updatePrState, archiveSession, unarchiveSession, setPanelVisibility,
+    updateSessionBranch,
   } = useSessionStore()
+
+  useGitBranchWatcher({ sessions, updateSessionBranch })
 
   const { agents, loadAgents } = useAgentStore()
   const { repos, loadRepos, checkGhAvailability, checkGitAvailability } = useRepoStore()
@@ -153,7 +164,6 @@ function AppContent() {
     checkGhAvailability, checkGitAvailability,
     switchProfile,
     markSessionRead,
-    refreshAllBranches,
   })
 
   // App callbacks hook
