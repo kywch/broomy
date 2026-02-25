@@ -113,6 +113,46 @@ export function getAvailableShells(): ShellOption[] {
   return shells
 }
 
+/** Well-known install locations for common CLI tools on Windows. */
+const WINDOWS_KNOWN_PATHS: Record<string, string[]> = {
+  git: [
+    'C:\\Program Files\\Git\\cmd\\git.exe',
+    'C:\\Program Files\\Git\\bin\\git.exe',
+    'C:\\Program Files\\Git\\mingw64\\bin\\git.exe',
+    'C:\\Program Files (x86)\\Git\\cmd\\git.exe',
+    'C:\\Program Files (x86)\\Git\\bin\\git.exe',
+    'C:\\Program Files (x86)\\Git\\mingw64\\bin\\git.exe',
+  ],
+  gh: [
+    'C:\\Program Files\\GitHub CLI\\gh.exe',
+    'C:\\Program Files (x86)\\GitHub CLI\\gh.exe',
+  ],
+}
+
+/**
+ * Resolve a command to its full path on Windows.
+ *
+ * Tries `whichSync()` first (which uses `where`), then falls back to
+ * well-known install directories for git and gh. Returns null if not found.
+ * On non-Windows platforms, delegates entirely to whichSync.
+ */
+export function resolveWindowsCommand(cmd: string): string | null {
+  // Try PATH first (works on all platforms)
+  const fromPath = whichSync(cmd)
+  if (fromPath) return fromPath
+
+  // On non-Windows, nothing more to try
+  if (!isWindows) return null
+
+  // Check well-known install locations
+  const knownPaths = WINDOWS_KNOWN_PATHS[cmd] ?? []
+  for (const p of knownPaths) {
+    if (existsSync(p)) return p
+  }
+
+  return null
+}
+
 export function getExecShell(): string | undefined {
   if (isWindows) return undefined // Node defaults to cmd.exe
   // Prefer the user's configured shell, fall back to POSIX sh

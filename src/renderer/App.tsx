@@ -244,8 +244,8 @@ function AppContent() {
 
   return (
     <>
-      <GitMissingBanner />
       <Layout
+        topBanner={<GitMissingBanner />}
         panels={panelsMap}
         panelVisibility={activeSession?.panelVisibility ?? {}}
         globalPanelVisibility={globalPanelVisibility}
