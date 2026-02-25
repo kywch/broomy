@@ -19,6 +19,18 @@ Analyze the release screenshot comparison report and produce a readiness assessm
 
 Style the HTML similarly to the comparison report (dark theme, clean layout). Make the link to the full comparison report very visible at the top of the page.
 
+## Linking to individual screenshots
+
+The comparison report (`index.html`) has per-screenshot anchor IDs on every card. The format is:
+
+```
+#shot-<key-with-slashes-and-dots-replaced-by-hyphens>
+```
+
+For example, `pr-description-comments/01-review-tab-pr-header.png` becomes `#shot-pr-description-comments-01-review-tab-pr-header-png`.
+
+**Every screenshot filename mentioned in the readiness report MUST be a clickable link** to the corresponding card in `index.html`. Use `<a href="index.html#shot-...">filename.png</a>` so the reviewer can jump straight to the side-by-side comparison. Never mention a screenshot filename as plain text.
+
 ## Important
 
 - Be conservative: if you're unsure whether a change is intentional, flag it for review.
