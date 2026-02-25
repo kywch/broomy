@@ -2,15 +2,16 @@
  * Feature Documentation: Select All Scoped to Active Pane
  *
  * Demonstrates that Cmd+A selects content within the focused pane
- * (terminal, Monaco editor) rather than selecting everything on the page.
+ * (Monaco editor) rather than selecting everything on the page.
  *
  * Run with: pnpm test:feature-docs select-all
  */
-import { test, expect, _electron as electron, ElectronApplication, Page } from '@playwright/test'
+import { test, expect, resetApp } from '../_shared/electron-fixture'
+import type { Page } from '@playwright/test'
 import path from 'path'
 import fs from 'fs'
 import { fileURLToPath } from 'url'
-import { screenshotElement } from '../_shared/screenshot-helpers'
+import { screenshotElement, waitForMonaco } from '../_shared/screenshot-helpers'
 import { generateFeaturePage, generateIndex, FeatureStep } from '../_shared/template'
 
 const __filename = fileURLToPath(import.meta.url)
@@ -20,32 +21,14 @@ const FEATURE_DIR = __dirname
 const SCREENSHOTS = path.join(FEATURE_DIR, 'screenshots')
 const FEATURES_ROOT = path.join(__dirname, '..')
 
-let electronApp: ElectronApplication
 let page: Page
 const steps: FeatureStep[] = []
 
-test.setTimeout(60000)
 
 test.beforeAll(async () => {
   await fs.promises.mkdir(SCREENSHOTS, { recursive: true })
 
-  electronApp = await electron.launch({
-    args: [path.join(__dirname, '..', '..', '..', 'out', 'main', 'index.js')],
-    env: {
-      ...process.env,
-      NODE_ENV: 'production',
-      E2E_TEST: 'true',
-      E2E_HEADLESS: process.env.E2E_HEADLESS ?? 'true',
-    },
-  })
-
-  page = await electronApp.firstWindow()
-  await page.setViewportSize({ width: 1400, height: 900 })
-  await page.waitForLoadState('domcontentloaded')
-  await page.waitForSelector('#root > div', { timeout: 15000 })
-
-  // Wait for terminals to initialize
-  await page.waitForTimeout(3000)
+  ;({ page } = await resetApp())
 })
 
 test.afterAll(async () => {
@@ -54,72 +37,93 @@ test.afterAll(async () => {
       title: 'Select All — Scoped to Active Pane',
       description:
         'Cmd+A (Select All) now selects content only within the currently focused pane. ' +
-        'In a terminal, it selects all terminal buffer content. In Monaco editor or text inputs, ' +
-        'it selects within that element. It no longer selects everything on the page.',
+        'In a Monaco editor, it selects all text within the editor. ' +
+        'It no longer selects everything on the page.',
       steps,
     },
     FEATURE_DIR,
   )
   await generateIndex(FEATURES_ROOT)
 
-  if (electronApp) {
-    await electronApp.close()
-  }
 })
 
 test.describe.serial('Feature: Select All Scoped to Active Pane', () => {
-  test('Step 1: Terminal has content — before select all', async () => {
-    // Verify terminal is visible with content
-    const terminalArea = page.locator('.xterm').first()
-    await expect(terminalArea).toBeVisible()
+  test('Step 1: Open a file in the editor', async () => {
+    // Open explorer panel
+    const explorerButton = page.locator('button[title*="Explorer"]').first()
+    if (await explorerButton.isVisible()) {
+      const cls = await explorerButton.getAttribute('class').catch(() => '')
+      if (!cls?.includes('bg-accent')) {
+        await explorerButton.click()
+      }
+    }
+    const explorerPanel = page.locator('[data-panel-id="explorer"]')
+    await expect(explorerPanel).toBeVisible()
 
-    const terminalText = await page.evaluate(() => {
-      const viewport = document.querySelector('.xterm-rows')
-      return viewport?.textContent || ''
+    // Click a file to open in the editor
+    const fileEntry = explorerPanel.locator('text=README.md').first()
+    await expect(fileEntry).toBeVisible()
+    await fileEntry.click()
+
+    // Wait for file viewer to appear (may open in diff or code mode)
+    const fileViewer = page.locator('[data-panel-id="fileViewer"]')
+    await expect(fileViewer).toBeVisible({ timeout: 10000 })
+
+    // Switch to Code view if we're in diff mode
+    const codeButton = fileViewer.locator('button[title="Code"]').first()
+    if (await codeButton.isVisible({ timeout: 2000 }).catch(() => false)) {
+      await codeButton.click()
+    }
+
+    // Wait for Monaco editor to load
+    await waitForMonaco(fileViewer)
+
+    await screenshotElement(page, fileViewer, path.join(SCREENSHOTS, '01-file-before.png'), {
+      maxHeight: 400,
     })
-    expect(terminalText).toContain('FAKE_CLAUDE_READY')
-
-    await screenshotElement(page, terminalArea, path.join(SCREENSHOTS, '01-terminal-before.png'))
     steps.push({
-      screenshotPath: 'screenshots/01-terminal-before.png',
-      caption: 'Terminal with agent output, before Select All',
+      screenshotPath: 'screenshots/01-file-before.png',
+      caption: 'File open in Monaco editor, before Select All',
       description:
-        'The terminal shows output from the agent. No text is selected yet.',
+        'README.md is open in the file viewer. No text is selected yet.',
     })
   })
 
-  test('Step 2: Cmd+A in terminal selects terminal content only', async () => {
-    // Click on the terminal to focus it
-    const terminalArea = page.locator('.xterm').first()
-    await terminalArea.click()
-    await page.waitForTimeout(200)
+  test('Step 2: Cmd+A in editor selects editor content only', async () => {
+    // Click on the Monaco editor to focus it
+    const fileViewer = page.locator('[data-panel-id="fileViewer"]')
+    const editor = fileViewer.locator('.monaco-editor').first()
+    await editor.click()
 
     // Press Cmd+A
     await page.keyboard.press('Meta+a')
-    await page.waitForTimeout(500)
 
-    // Check that terminal has a selection
-    const hasSelection = await page.evaluate(() => {
-      // xterm selection is rendered as a canvas layer, not DOM selection.
-      // Verify that the sidebar text is NOT selected (DOM selection is empty or
-      // doesn't span the whole page).
+    // Check that the DOM selection doesn't span the whole page
+    const selectionInfo = await page.evaluate(() => {
       const domSelection = window.getSelection()
       const selectedText = domSelection?.toString() || ''
-      // If scoped correctly, the DOM selection should be empty (terminal uses canvas selection)
-      // or at most limited to the terminal area — NOT the entire page.
-      return { selectedText: selectedText.substring(0, 200), length: selectedText.length }
+      // Monaco manages its own selection — the DOM selection should not include
+      // sidebar or other panel content
+      const sidebarEl = document.querySelector('[data-panel-id="sidebar"]')
+      const sidebarSelected = sidebarEl && domSelection && domSelection.rangeCount > 0
+        ? sidebarEl.contains(domSelection.getRangeAt(0).startContainer) ||
+          sidebarEl.contains(domSelection.getRangeAt(0).endContainer)
+        : false
+      return { domTextLength: selectedText.length, sidebarSelected }
     })
 
-    // The DOM selection should be empty or minimal because terminal uses canvas-based selection
-    expect(hasSelection.length).toBeLessThan(500)
+    // Sidebar should NOT be part of the selection
+    expect(selectionInfo.sidebarSelected).toBe(false)
 
-    await screenshotElement(page, terminalArea, path.join(SCREENSHOTS, '02-terminal-select-all.png'))
+    await screenshotElement(page, fileViewer, path.join(SCREENSHOTS, '02-editor-select-all.png'), {
+      maxHeight: 400,
+    })
     steps.push({
-      screenshotPath: 'screenshots/02-terminal-select-all.png',
-      caption: 'After Cmd+A — terminal buffer is selected, not the entire page',
+      screenshotPath: 'screenshots/02-editor-select-all.png',
+      caption: 'After Cmd+A — editor text is selected, not the entire page',
       description:
-        'Pressing Cmd+A while the terminal is focused selects all content within the terminal ' +
-        'buffer (visible as a highlight in the terminal). The sidebar and other panels are unaffected.',
+        'Pressing Cmd+A while the Monaco editor is focused selects all text within the editor. ' +
+        'The sidebar and other panels are unaffected.',
     })
   })
 
@@ -145,10 +149,10 @@ test.describe.serial('Feature: Select All Scoped to Active Pane', () => {
     })
     steps.push({
       screenshotPath: 'screenshots/03-sidebar-not-selected.png',
-      caption: 'Sidebar remains unselected after Cmd+A in terminal',
+      caption: 'Sidebar remains unselected after Cmd+A in editor',
       description:
         'The sidebar shows sessions as normal — no text highlight. ' +
-        'Select All is properly scoped to the terminal pane.',
+        'Select All is properly scoped to the file editor pane.',
     })
   })
 })

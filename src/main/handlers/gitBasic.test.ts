@@ -37,23 +37,25 @@ vi.mock('../gitStatusParser', () => ({
   }),
 }))
 
-vi.mock('./types', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('./types')>()
+vi.mock('./scenarios', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./scenarios')>()
   return {
     ...actual,
-    getE2EMockBranches: () => ({
-      '/test-repo': 'feature/test',
-    }),
+    // Override branches so E2E getBranch tests use a known value
+    getScenarioData: (scenario: string) => {
+      const data = actual.getScenarioData(scenario as never)
+      return { ...data, branches: { ...data.branches, '/test-repo': 'feature/test' } }
+    },
   }
 })
 
 import { register } from './gitBasic'
-import type { HandlerContext } from './types'
+import { E2EScenario, type HandlerContext } from './types'
 
 function createMockCtx(overrides: Partial<HandlerContext> = {}): HandlerContext {
   return {
     isE2ETest: false,
-    isScreenshotMode: false,
+    e2eScenario: E2EScenario.Default,
     isDev: false,
     isWindows: false,
     ptyProcesses: new Map(),
@@ -155,7 +157,7 @@ describe('gitBasic handlers', () => {
     })
 
     it('returns screenshot mode status with more files', async () => {
-      const handlers = setupHandlers(createMockCtx({ isE2ETest: true, isScreenshotMode: true }))
+      const handlers = setupHandlers(createMockCtx({ isE2ETest: true, e2eScenario: E2EScenario.Marketing }))
       const result = await handlers['git:status'](null, '/repo')
       expect(result.files.length).toBeGreaterThan(2)
       expect(result.ahead).toBe(3)
@@ -517,7 +519,7 @@ describe('gitBasic handlers', () => {
     })
 
     it('returns screenshot mode diff with detailed content', async () => {
-      const handlers = setupHandlers(createMockCtx({ isE2ETest: true, isScreenshotMode: true }))
+      const handlers = setupHandlers(createMockCtx({ isE2ETest: true, e2eScenario: E2EScenario.Marketing }))
       const result = await handlers['git:diff'](null, '/repo')
       expect(result).toContain('diff --git a/src/middleware/auth.ts')
       expect(result).toContain('TokenService')
@@ -555,7 +557,7 @@ describe('gitBasic handlers', () => {
     })
 
     it('returns screenshot mode content with detailed code', async () => {
-      const handlers = setupHandlers(createMockCtx({ isE2ETest: true, isScreenshotMode: true }))
+      const handlers = setupHandlers(createMockCtx({ isE2ETest: true, e2eScenario: E2EScenario.Marketing }))
       const result = await handlers['git:show'](null, '/repo', 'file.ts')
       expect(result).toContain('authenticate')
       expect(result).toContain('jwt.verify')

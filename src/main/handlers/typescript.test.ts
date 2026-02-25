@@ -10,12 +10,12 @@ vi.mock('electron', () => ({
 
 import { runInWorker } from '../workerPool'
 import { register } from './typescript'
-import type { HandlerContext } from './types'
+import { E2EScenario, type HandlerContext } from './types'
 
 function createCtx(overrides: Partial<HandlerContext> = {}): HandlerContext {
   return {
     isE2ETest: false,
-    isScreenshotMode: false,
+    e2eScenario: E2EScenario.Default,
     isDev: false,
     isWindows: false,
     ptyProcesses: new Map(),

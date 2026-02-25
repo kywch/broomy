@@ -12,7 +12,8 @@
  *
  * Run with: pnpm test:feature-docs simple-merge-commit
  */
-import { test, expect, _electron as electron, ElectronApplication, Page } from '@playwright/test'
+import { test, expect, resetApp } from '../_shared/electron-fixture'
+import type { ElectronApplication, Page } from '@playwright/test'
 import path from 'path'
 import fs from 'fs'
 import { fileURLToPath } from 'url'
@@ -28,22 +29,23 @@ const FEATURES_ROOT = path.join(__dirname, '..')
 
 const steps: FeatureStep[] = []
 
-test.setTimeout(60000)
+let electronApp: ElectronApplication
+let page: Page
 
 /** Navigate the explorer panel to the source-control tab */
-async function openSourceControl(page: Page) {
+async function openSourceControl(p: Page) {
   // Ensure explorer panel is open
-  const explorerButton = page.locator('[data-panel-id="explorer-toggle"], [title*="Explorer"]').first()
+  const explorerButton = p.locator('[data-panel-id="explorer-toggle"], [title*="Explorer"]').first()
   if (await explorerButton.isVisible()) {
     const cls = await explorerButton.getAttribute('class').catch(() => '')
     if (!cls?.includes('bg-accent')) {
       await explorerButton.click()
-      await page.waitForTimeout(300)
+      await expect(p.locator('[data-panel-id="explorer"]')).toBeVisible()
     }
   }
 
   // Switch to source-control filter via store
-  await page.evaluate(() => {
+  await p.evaluate(() => {
     const store = (window as Record<string, unknown>).__sessionStore as {
       getState: () => { activeSessionId: string; setExplorerFilter: (id: string, filter: string) => void }
     }
@@ -51,32 +53,22 @@ async function openSourceControl(page: Page) {
     const state = store.getState()
     state.setExplorerFilter(state.activeSessionId, 'source-control')
   })
-  await page.waitForTimeout(500)
+  // Wait for the source-control UI to render
+  await expect(p.locator('[data-panel-id="explorer"]')).toBeVisible()
 }
 
-function launchApp(mockMerge: string) {
-  return electron.launch({
-    args: [path.join(__dirname, '..', '..', '..', 'out', 'main', 'index.js')],
-    env: {
-      ...process.env,
-      NODE_ENV: 'production',
-      E2E_TEST: 'true',
-      E2E_HEADLESS: process.env.E2E_HEADLESS ?? 'true',
-      SCREENSHOT_MODE: 'true',
-      E2E_MOCK_MERGE: mockMerge,
-    },
-  })
-}
-
-async function waitForApp(page: Page) {
-  await page.setViewportSize({ width: 1400, height: 900 })
-  await page.waitForLoadState('domcontentloaded')
-  await page.waitForSelector('#root > div', { timeout: 15000 })
-  await page.waitForTimeout(3000)
+/** Reset app with the given mock merge state */
+async function setMockMerge(mockMerge: string) {
+  const result = await resetApp({ scenario: 'marketing', mockMerge })
+  electronApp = result.electronApp
+  page = result.page
 }
 
 test.beforeAll(async () => {
   await fs.promises.mkdir(SCREENSHOTS, { recursive: true })
+  const result = await resetApp({ scenario: 'marketing' })
+  electronApp = result.electronApp
+  page = result.page
 })
 
 test.afterAll(async () => {
@@ -99,9 +91,7 @@ test.afterAll(async () => {
 
 test.describe.serial('Feature: Simple Merge Commit', () => {
   test('Step 1: Merge with unresolved conflicts', async () => {
-    const electronApp = await launchApp('conflicts')
-    const page = await electronApp.firstWindow()
-    await waitForApp(page)
+    await setMockMerge('conflicts')
     await openSourceControl(page)
 
     // Verify merge banner
@@ -125,14 +115,10 @@ test.describe.serial('Feature: Simple Merge Commit', () => {
         'the source control panel shows a yellow "Merge in progress" banner and an orange ' +
         '"Resolve Conflicts" button. Clicking it asks the agent to resolve the conflicts.',
     })
-
-    await electronApp.close()
   })
 
   test('Step 2: Conflicts resolved — Commit Merge available', async () => {
-    const electronApp = await launchApp('true')
-    const page = await electronApp.firstWindow()
-    await waitForApp(page)
+    await setMockMerge('true')
     await openSourceControl(page)
 
     // Verify resolved banner (green text)
@@ -156,14 +142,10 @@ test.describe.serial('Feature: Simple Merge Commit', () => {
         'the button changes to "Commit Merge". Clicking it stages all files and commits the merge ' +
         'using the auto-generated merge message. No manual commit message is needed.',
     })
-
-    await electronApp.close()
   })
 
   test('Step 3: File lists visible during merge', async () => {
-    const electronApp = await launchApp('true')
-    const page = await electronApp.firstWindow()
-    await waitForApp(page)
+    await setMockMerge('true')
     await openSourceControl(page)
 
     // Verify file lists are visible
@@ -183,7 +165,5 @@ test.describe.serial('Feature: Simple Merge Commit', () => {
         'unstaged changes (files where conflicts were resolved). ' +
         'The "Commit Merge" button stages all files automatically before committing.',
     })
-
-    await electronApp.close()
   })
 })

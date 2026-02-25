@@ -24,7 +24,7 @@ vi.mock('electron', () => ({
 }))
 
 import { register } from './updater'
-import type { HandlerContext } from './types'
+import { E2EScenario, type HandlerContext } from './types'
 import type { IpcMain } from 'electron'
 
 function createMockIpcMain() {
@@ -35,7 +35,7 @@ function createMockCtx(overrides: Partial<HandlerContext> = {}): HandlerContext 
   return {
     isDev: false,
     isE2ETest: false,
-    isScreenshotMode: false,
+    e2eScenario: E2EScenario.Default,
     isWindows: false,
     ptyProcesses: new Map(),
     ptyOwnerWindows: new Map(),

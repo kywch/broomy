@@ -6,7 +6,8 @@
  *
  * Run with: pnpm test:feature-docs check-for-updates
  */
-import { test, expect, _electron as electron, ElectronApplication, Page } from '@playwright/test'
+import { test, expect, resetApp } from '../_shared/electron-fixture'
+import type { Page } from '@playwright/test'
 import path from 'path'
 import fs from 'fs'
 import { fileURLToPath } from 'url'
@@ -20,33 +21,14 @@ const FEATURE_DIR = __dirname
 const SCREENSHOTS = path.join(FEATURE_DIR, 'screenshots')
 const FEATURES_ROOT = path.join(__dirname, '..')
 
-let electronApp: ElectronApplication
 let page: Page
 const steps: FeatureStep[] = []
 
-test.setTimeout(60000)
 
 test.beforeAll(async () => {
   await fs.promises.mkdir(SCREENSHOTS, { recursive: true })
 
-  electronApp = await electron.launch({
-    args: [path.join(__dirname, '..', '..', '..', 'out', 'main', 'index.js')],
-    env: {
-      ...process.env,
-      NODE_ENV: 'production',
-      E2E_TEST: 'true',
-      E2E_HEADLESS: process.env.E2E_HEADLESS ?? 'true',
-      SCREENSHOT_MODE: 'true',
-    },
-  })
-
-  page = await electronApp.firstWindow()
-  await page.setViewportSize({ width: 1400, height: 900 })
-  await page.waitForLoadState('domcontentloaded')
-  await page.waitForSelector('#root > div', { timeout: 15000 })
-
-  // Wait for UI to initialize and update check to complete
-  await page.waitForTimeout(3000)
+  ;({ page } = await resetApp({ scenario: 'marketing' }))
 })
 
 test.afterAll(async () => {
@@ -63,9 +45,6 @@ test.afterAll(async () => {
   )
   await generateIndex(FEATURES_ROOT)
 
-  if (electronApp) {
-    await electronApp.close()
-  }
 })
 
 test.describe.serial('Feature: Check for Updates', () => {
@@ -114,7 +93,6 @@ test.describe.serial('Feature: Check for Updates', () => {
     // Click the toolbar Update button to open the popover
     const updateButton = page.locator('button:has-text("Update")').first()
     await updateButton.click()
-    await page.waitForTimeout(300)
 
     // The popover should show version info and changelog link
     const popover = page.locator('.shadow-xl:has-text("Current version")')
@@ -135,7 +113,7 @@ test.describe.serial('Feature: Check for Updates', () => {
 
     // Close the popover
     await page.locator('.fixed.inset-0.z-40').click()
-    await page.waitForTimeout(300)
+    await expect(popover).not.toBeVisible()
   })
 
   test('Step 4: Download progress state', async () => {
@@ -150,7 +128,6 @@ test.describe.serial('Feature: Check for Updates', () => {
         })
       }
     })
-    await page.waitForTimeout(300)
 
     // The sidebar banner should show download progress
     const sidebar = page.locator('[data-panel-id="sidebar"]')
@@ -181,7 +158,6 @@ test.describe.serial('Feature: Check for Updates', () => {
         })
       }
     })
-    await page.waitForTimeout(300)
 
     const sidebar = page.locator('[data-panel-id="sidebar"]')
     const restartButton = sidebar.locator('text=Restart')

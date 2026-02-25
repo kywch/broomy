@@ -28,12 +28,12 @@ vi.mock('../platform', () => ({
 import { existsSync, mkdirSync, writeFileSync, readdirSync } from 'fs'
 import { readFile, writeFile, rename, copyFile, mkdir, access } from 'fs/promises'
 import { register } from './config'
-import { DEFAULT_AGENTS, DEFAULT_PROFILES, HandlerContext } from './types'
+import { DEFAULT_AGENTS, DEFAULT_PROFILES, E2EScenario, HandlerContext } from './types'
 
 function createMockCtx(overrides: Partial<HandlerContext> = {}): HandlerContext {
   return {
     isE2ETest: false,
-    isScreenshotMode: false,
+    e2eScenario: E2EScenario.Default,
     isDev: false,
     isWindows: false,
     ptyProcesses: new Map(),

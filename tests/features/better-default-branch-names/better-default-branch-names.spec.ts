@@ -8,7 +8,8 @@
  *
  * Run with: pnpm test:feature-docs
  */
-import { test, expect, _electron as electron, ElectronApplication, Page } from '@playwright/test'
+import { test, expect, resetApp } from '../_shared/electron-fixture'
+import type { Page } from '@playwright/test'
 import path from 'path'
 import fs from 'fs'
 import { fileURLToPath } from 'url'
@@ -22,32 +23,14 @@ const FEATURE_DIR = __dirname
 const SCREENSHOTS = path.join(FEATURE_DIR, 'screenshots')
 const FEATURES_ROOT = path.join(__dirname, '..')
 
-let electronApp: ElectronApplication
 let page: Page
 const steps: FeatureStep[] = []
 
-test.setTimeout(60000)
 
 test.beforeAll(async () => {
   await fs.promises.mkdir(SCREENSHOTS, { recursive: true })
 
-  electronApp = await electron.launch({
-    args: [path.join(__dirname, '..', '..', '..', 'out', 'main', 'index.js')],
-    env: {
-      ...process.env,
-      NODE_ENV: 'production',
-      E2E_TEST: 'true',
-      E2E_HEADLESS: process.env.E2E_HEADLESS ?? 'true',
-    },
-  })
-
-  page = await electronApp.firstWindow()
-  await page.setViewportSize({ width: 1400, height: 900 })
-  await page.waitForLoadState('domcontentloaded')
-  await page.waitForSelector('#root > div', { timeout: 15000 })
-
-  // Wait for app to fully initialize
-  await page.waitForTimeout(3000)
+  ;({ page } = await resetApp())
 })
 
 test.afterAll(async () => {
@@ -67,9 +50,6 @@ test.afterAll(async () => {
   )
   await generateIndex(FEATURES_ROOT)
 
-  if (electronApp) {
-    await electronApp.close()
-  }
 })
 
 test.describe.serial('Feature: Better Default Branch Names', () => {
@@ -78,13 +58,11 @@ test.describe.serial('Feature: Better Default Branch Names', () => {
     const newSessionBtn = page.locator('button:has-text("+ New Session")')
     await expect(newSessionBtn).toBeVisible()
     await newSessionBtn.click()
-    await page.waitForTimeout(500)
 
     // Click Issues button
     const issuesBtn = page.locator('button:has-text("Issues")')
     await expect(issuesBtn).toBeVisible()
     await issuesBtn.click()
-    await page.waitForTimeout(1000)
 
     // Issues view should show mock issues with long titles
     await expect(page.locator('text=dark mode toggle')).toBeVisible()
@@ -106,7 +84,6 @@ test.describe.serial('Feature: Better Default Branch Names', () => {
     // Click on issue #42
     const issue = page.locator('button:has-text("dark mode toggle")')
     await issue.click()
-    await page.waitForTimeout(500)
 
     // Should now be in NewBranchView with the issue shown
     await expect(page.locator('text=Issue #42')).toBeVisible()
@@ -143,15 +120,15 @@ test.describe.serial('Feature: Better Default Branch Names', () => {
     // Go back to issues list
     const backBtn = page.locator('button:has(svg path[d="M15 19l-7-7 7-7"])')
     await backBtn.first().click()
-    await page.waitForTimeout(500)
 
     // Click the second issue
     const issue = page.locator('button:has-text("empty notification list")')
     await expect(issue).toBeVisible()
     await issue.click()
-    await page.waitForTimeout(500)
 
+    // Wait for NewBranchView to load with the input field
     const input = page.locator('input[placeholder="feature/my-feature"]')
+    await expect(input).toBeVisible()
     const branchValue = await input.inputValue()
 
     // Should strip filler words

@@ -7,7 +7,8 @@
  *
  * Run with: pnpm test:feature-docs windows-support
  */
-import { test, expect, _electron as electron, ElectronApplication, Page } from '@playwright/test'
+import { test, expect, resetApp } from '../_shared/electron-fixture'
+import type { Page } from '@playwright/test'
 import path from 'path'
 import fs from 'fs'
 import { fileURLToPath } from 'url'
@@ -21,7 +22,6 @@ const FEATURE_DIR = __dirname
 const SCREENSHOTS = path.join(FEATURE_DIR, 'screenshots')
 const FEATURES_ROOT = path.join(__dirname, '..')
 
-let electronApp: ElectronApplication
 let page: Page
 const steps: FeatureStep[] = []
 
@@ -29,24 +29,8 @@ test.setTimeout(60000)
 
 test.beforeAll(async () => {
   await fs.promises.mkdir(SCREENSHOTS, { recursive: true })
-
-  electronApp = await electron.launch({
-    args: [path.join(__dirname, '..', '..', '..', 'out', 'main', 'index.js')],
-    env: {
-      ...process.env,
-      NODE_ENV: 'production',
-      E2E_TEST: 'true',
-      E2E_HEADLESS: process.env.E2E_HEADLESS ?? 'true',
-    },
-  })
-
-  page = await electronApp.firstWindow()
-  await page.setViewportSize({ width: 1400, height: 900 })
-  await page.waitForLoadState('domcontentloaded')
-  await page.waitForSelector('#root > div', { timeout: 15000 })
-
-  // Wait for terminals to initialize
-  await page.waitForTimeout(3000)
+  const result = await resetApp()
+  page = result.page
 })
 
 test.afterAll(async () => {
@@ -62,10 +46,6 @@ test.afterAll(async () => {
     FEATURE_DIR,
   )
   await generateIndex(FEATURES_ROOT)
-
-  if (electronApp) {
-    await electronApp.close()
-  }
 })
 
 test.describe.serial('Feature: Windows Support', () => {
@@ -127,9 +107,6 @@ test.describe.serial('Feature: Windows Support', () => {
       }
     })
 
-    // Wait for the banner to render
-    await page.waitForTimeout(500)
-
     // Screenshot the top area including the gh-missing banner
     const banner = page.locator('.bg-yellow-900\\/30').first()
     if (await banner.isVisible()) {
@@ -157,7 +134,8 @@ test.describe.serial('Feature: Windows Support', () => {
         store.setState({ ghAvailable: true })
       }
     })
-    await page.waitForTimeout(300)
+    // Wait for banner to disappear
+    await expect(banner).not.toBeVisible()
   })
 
   test('Step 4: Agent not-installed warning with install link', async () => {
@@ -165,12 +143,12 @@ test.describe.serial('Feature: Windows Support', () => {
     const addButton = page.locator('button:has(svg path[d="M12 4v16m8-8H4"])').first()
     if (await addButton.isVisible()) {
       await addButton.click()
-      await page.waitForTimeout(500)
 
       // If we get to the agent picker, screenshot the area
       const agentPicker = page.locator('text=Select Agent').first()
       if (await agentPicker.isVisible({ timeout: 2000 }).catch(() => false)) {
         const dialog = page.locator('.space-y-2').first()
+        await expect(dialog).toBeVisible()
         await screenshotElement(page, dialog, path.join(SCREENSHOTS, '04-agent-picker.png'))
         steps.push({
           screenshotPath: 'screenshots/04-agent-picker.png',
@@ -184,7 +162,6 @@ test.describe.serial('Feature: Windows Support', () => {
 
       // Close the dialog by pressing Escape
       await page.keyboard.press('Escape')
-      await page.waitForTimeout(300)
     }
   })
 

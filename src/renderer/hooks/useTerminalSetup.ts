@@ -1,3 +1,6 @@
+/**
+ * Sets up and manages the xterm.js terminal instance including PTY creation, resize handling, buffer restoration, and scroll tracking.
+ */
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { Terminal as XTerm } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
@@ -363,7 +366,7 @@ export function useTerminalSetup(
       fontFamily: 'Menlo, Monaco, "Courier New", monospace',
       fontSize: 13,
       lineHeight: 1.2,
-      cursorBlink: true,
+      cursorBlink: !document.documentElement.classList.contains('e2e-stable'),
       cursorStyle: 'bar',
       scrollback: 5000,
       minimumContrastRatio: 7,

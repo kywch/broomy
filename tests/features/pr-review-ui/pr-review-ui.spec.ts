@@ -8,11 +8,12 @@
  *
  * Run with: pnpm test:feature-docs pr-review-ui
  */
-import { test, expect, _electron as electron, ElectronApplication, Page } from '@playwright/test'
+import { test, expect, resetApp } from '../_shared/electron-fixture'
+import type { ElectronApplication, Page } from '@playwright/test'
 import path from 'path'
 import fs from 'fs'
 import { fileURLToPath } from 'url'
-import { screenshotElement, screenshotClip } from '../_shared/screenshot-helpers'
+import { screenshotElement, screenshotClip, scrollToVisible } from '../_shared/screenshot-helpers'
 import { generateFeaturePage, generateIndex, FeatureStep } from '../_shared/template'
 
 const __filename = fileURLToPath(import.meta.url)
@@ -26,26 +27,11 @@ let electronApp: ElectronApplication
 let page: Page
 const steps: FeatureStep[] = []
 
-test.setTimeout(60000)
 
 test.beforeAll(async () => {
   await fs.promises.mkdir(SCREENSHOTS, { recursive: true })
 
-  electronApp = await electron.launch({
-    args: [path.join(__dirname, '..', '..', '..', 'out', 'main', 'index.js')],
-    env: {
-      ...process.env,
-      NODE_ENV: 'production',
-      E2E_TEST: 'true',
-      E2E_HEADLESS: process.env.E2E_HEADLESS ?? 'true',
-    },
-  })
-
-  page = await electronApp.firstWindow()
-  await page.setViewportSize({ width: 1400, height: 900 })
-  await page.waitForLoadState('domcontentloaded')
-  await page.waitForSelector('#root > div', { timeout: 15000 })
-  await page.waitForTimeout(3000)
+  ;({ electronApp, page } = await resetApp())
 
   // Install IPC call tracking in the main process
   await electronApp.evaluate(({ ipcMain }) => {
@@ -86,9 +72,6 @@ test.afterAll(async () => {
   )
   await generateIndex(FEATURES_ROOT)
 
-  if (electronApp) {
-    await electronApp.close()
-  }
 })
 
 /** Read and clear tracked IPC calls from the main process */
@@ -132,7 +115,6 @@ async function setupReviewSession(p: Page) {
 
   const firstSession = p.locator('.cursor-pointer').first()
   await firstSession.click()
-  await p.waitForTimeout(500)
 
   // Open explorer and switch to review filter
   const explorerButton = p.locator('button[title*="Explorer"]').first()
@@ -140,7 +122,6 @@ async function setupReviewSession(p: Page) {
     const cls = await explorerButton.getAttribute('class').catch(() => '')
     if (!cls?.includes('bg-accent')) {
       await explorerButton.click()
-      await p.waitForTimeout(300)
     }
   }
 
@@ -157,7 +138,7 @@ async function setupReviewSession(p: Page) {
     state.setPanelVisibility(state.activeSessionId, 'explorer', true)
     state.setExplorerFilter(state.activeSessionId, 'review')
   })
-  await p.waitForTimeout(2000)
+  await expect(p.locator('text=Overview')).toBeVisible({ timeout: 10000 })
 }
 
 test.describe.serial('Feature: Improved PR Review UI', () => {
@@ -174,15 +155,14 @@ test.describe.serial('Feature: Improved PR Review UI', () => {
 
     // Click to expand PR Description
     await prDescHeader.click()
-    await page.waitForTimeout(500)
+
+    // Verify the markdown is rendered (the mock description has "## Changes" heading)
+    const changesHeading = page.locator('h2:has-text("Changes")')
+    await expect(changesHeading).toBeVisible({ timeout: 3000 })
 
     // Scroll to top to see the PR Description content
     const scrollContainer = page.locator('[data-panel-id="explorer"] .overflow-y-auto').first()
     await scrollContainer.evaluate(el => { el.scrollTop = 0 })
-    await page.waitForTimeout(300)
-
-    // Verify the markdown is rendered (the mock description has "## Changes" heading)
-    const changesHeading = page.locator('h2:has-text("Changes")')
     await expect(changesHeading).toBeVisible({ timeout: 3000 })
 
     const explorer = page.locator('[data-panel-id="explorer"]')
@@ -203,11 +183,14 @@ test.describe.serial('Feature: Improved PR Review UI', () => {
     // Collapse PR Description
     const prDescHeader = page.locator('button:has-text("PR Description")')
     await prDescHeader.click()
-    await page.waitForTimeout(300)
+
+    // Wait for collapse — the "Changes" heading should no longer be visible
+    const changesHeading = page.locator('h2:has-text("Changes")')
+    await expect(changesHeading).not.toBeVisible({ timeout: 3000 })
 
     const scrollContainer = page.locator('[data-panel-id="explorer"] .overflow-y-auto').first()
     await scrollContainer.evaluate(el => { el.scrollTop = 0 })
-    await page.waitForTimeout(300)
+    await expect(prDescHeader).toBeVisible()
 
     const explorer = page.locator('[data-panel-id="explorer"]')
     await screenshotElement(page, explorer, path.join(SCREENSHOTS, '02-description-collapsed.png'), {
@@ -225,13 +208,9 @@ test.describe.serial('Feature: Improved PR Review UI', () => {
 
   test('Step 3: Collapsible comment threads with previews', async () => {
     await page.setViewportSize({ width: 1400, height: 1200 })
-    await page.waitForTimeout(500)
-
-    const scrollContainer = page.locator('[data-panel-id="explorer"] .overflow-y-auto').first()
-    await scrollContainer.evaluate(el => { el.scrollTop = el.scrollHeight })
-    await page.waitForTimeout(500)
 
     const prCommentsSection = page.locator('text=PR Comments')
+    await scrollToVisible(prCommentsSection)
     await expect(prCommentsSection).toBeVisible({ timeout: 5000 })
 
     const headerBox = await prCommentsSection.boundingBox()
@@ -247,7 +226,6 @@ test.describe.serial('Feature: Improved PR Review UI', () => {
     }
 
     await page.setViewportSize({ width: 1400, height: 900 })
-    await page.waitForTimeout(300)
 
     steps.push({
       screenshotPath: 'screenshots/03-collapsed-threads.png',
@@ -261,13 +239,9 @@ test.describe.serial('Feature: Improved PR Review UI', () => {
 
   test('Step 4: Filter and sort controls', async () => {
     await page.setViewportSize({ width: 1400, height: 1200 })
-    await page.waitForTimeout(300)
-
-    const scrollContainer = page.locator('[data-panel-id="explorer"] .overflow-y-auto').first()
-    await scrollContainer.evaluate(el => { el.scrollTop = el.scrollHeight })
-    await page.waitForTimeout(300)
 
     const allButton = page.locator('button:has-text("All")').first()
+    await scrollToVisible(allButton)
     const activeButton = page.locator('button:has-text("Active")').first()
 
     if (await allButton.isVisible() && await activeButton.isVisible()) {
@@ -288,7 +262,6 @@ test.describe.serial('Feature: Improved PR Review UI', () => {
     }
 
     await page.setViewportSize({ width: 1400, height: 900 })
-    await page.waitForTimeout(300)
 
     steps.push({
       screenshotPath: 'screenshots/04-filter-sort.png',
@@ -303,25 +276,19 @@ test.describe.serial('Feature: Improved PR Review UI', () => {
 
   test('Step 5: Expanded comment with reactions and reply button', async () => {
     await page.setViewportSize({ width: 1400, height: 1200 })
-    await page.waitForTimeout(300)
 
     const scrollContainer = page.locator('[data-panel-id="explorer"] .overflow-y-auto').first()
-    await scrollContainer.evaluate(el => { el.scrollTop = el.scrollHeight })
-    await page.waitForTimeout(300)
 
     // Expand all reviewer comment threads to see reactions and reply buttons
     const commentButtons = page.locator('button.w-full.text-left:has-text("reviewer")')
     const count = await commentButtons.count()
     for (let i = 0; i < count; i++) {
       await commentButtons.nth(i).click()
-      await page.waitForTimeout(300)
     }
-
-    await scrollContainer.evaluate(el => { el.scrollTop = el.scrollHeight })
-    await page.waitForTimeout(300)
 
     // Verify a Reply button is visible (review comments have Reply)
     const replyBtn = page.locator('button:has-text("Reply")').first()
+    await scrollToVisible(replyBtn)
     await expect(replyBtn).toBeVisible({ timeout: 3000 })
 
     // Verify reaction badges are visible (mock data has +1 reaction on review comment 1)
@@ -345,7 +312,6 @@ test.describe.serial('Feature: Improved PR Review UI', () => {
     }
 
     await page.setViewportSize({ width: 1400, height: 900 })
-    await page.waitForTimeout(300)
 
     steps.push({
       screenshotPath: 'screenshots/05-expanded-comment.png',
@@ -359,20 +325,15 @@ test.describe.serial('Feature: Improved PR Review UI', () => {
 
   test('Step 6: Typing and submitting an inline reply', async () => {
     await page.setViewportSize({ width: 1400, height: 1200 })
-    await page.waitForTimeout(300)
 
     // Clear any prior IPC calls
     await getAndClearIpcCalls(electronApp)
 
-    const scrollContainer = page.locator('[data-panel-id="explorer"] .overflow-y-auto').first()
-    await scrollContainer.evaluate(el => { el.scrollTop = el.scrollHeight })
-    await page.waitForTimeout(300)
-
     // Click the Reply button on an expanded review comment
     const replyBtn = page.locator('button:has-text("Reply")').first()
+    await scrollToVisible(replyBtn)
     await expect(replyBtn).toBeVisible({ timeout: 3000 })
     await replyBtn.click()
-    await page.waitForTimeout(500)
 
     // A textarea should appear
     const textarea = page.locator('textarea[placeholder="Write a reply..."]')
@@ -380,10 +341,10 @@ test.describe.serial('Feature: Improved PR Review UI', () => {
 
     // Type a reply
     await textarea.fill('Looks good, I\'ll add a comment there. Thanks!')
-    await page.waitForTimeout(300)
 
+    const scrollContainer = page.locator('[data-panel-id="explorer"] .overflow-y-auto').first()
     await scrollContainer.evaluate(el => { el.scrollTop = el.scrollHeight })
-    await page.waitForTimeout(300)
+    await expect(textarea).toBeVisible()
 
     // Screenshot the reply textarea with typed content
     const explorer = page.locator('[data-panel-id="explorer"]')
@@ -413,7 +374,9 @@ test.describe.serial('Feature: Improved PR Review UI', () => {
     // Click the submit button (the bg-accent "Reply" button inside the reply box, not the text link)
     const submitBtn = page.locator('button.bg-accent:has-text("Reply")')
     await submitBtn.click()
-    await page.waitForTimeout(1500)
+
+    // The textarea should have disappeared after successful reply
+    await expect(textarea).not.toBeVisible({ timeout: 5000 })
 
     // Verify the correct IPC call was sent to the main process
     const calls = await getAndClearIpcCalls(electronApp)
@@ -425,12 +388,8 @@ test.describe.serial('Feature: Improved PR Review UI', () => {
     expect(replyArgs[1]).toBe(123) // prNumber
     expect(replyArgs[3]).toBe('Looks good, I\'ll add a comment there. Thanks!') // body
 
-    // The textarea should have disappeared after successful reply
-    await expect(textarea).not.toBeVisible({ timeout: 3000 })
-
     // Screenshot showing the reply was submitted (textarea gone)
     await scrollContainer.evaluate(el => { el.scrollTop = el.scrollHeight })
-    await page.waitForTimeout(300)
 
     if (explorerBox) {
       const captureHeight = Math.min(explorerBox.height, 400)
@@ -456,25 +415,19 @@ test.describe.serial('Feature: Improved PR Review UI', () => {
     })
 
     await page.setViewportSize({ width: 1400, height: 900 })
-    await page.waitForTimeout(300)
   })
 
   test('Step 7: Adding an emoji reaction via the picker', async () => {
     await page.setViewportSize({ width: 1400, height: 1200 })
-    await page.waitForTimeout(300)
 
     // Clear prior IPC calls
     await getAndClearIpcCalls(electronApp)
 
-    const scrollContainer = page.locator('[data-panel-id="explorer"] .overflow-y-auto').first()
-    await scrollContainer.evaluate(el => { el.scrollTop = el.scrollHeight })
-    await page.waitForTimeout(300)
-
     // Click the "+" button to open the reaction picker
     const addReactionBtn = page.locator('button[title="Add reaction"]').first()
+    await scrollToVisible(addReactionBtn)
     await expect(addReactionBtn).toBeVisible({ timeout: 3000 })
     await addReactionBtn.click()
-    await page.waitForTimeout(500)
 
     // The reaction picker popover should appear with emoji buttons
     const rocketBtn = page.locator('button[title="rocket"]')
@@ -508,7 +461,9 @@ test.describe.serial('Feature: Improved PR Review UI', () => {
 
     // Click the rocket emoji reaction
     await rocketBtn.click()
-    await page.waitForTimeout(1500)
+
+    // Wait for the reaction picker to close
+    await expect(rocketBtn).not.toBeVisible({ timeout: 5000 })
 
     // Verify the correct IPC call was sent for addReaction
     const calls = await getAndClearIpcCalls(electronApp)
@@ -521,6 +476,5 @@ test.describe.serial('Feature: Improved PR Review UI', () => {
     expect(reactionArgs[3]).toBe('review') // commentType (it's a review comment)
 
     await page.setViewportSize({ width: 1400, height: 900 })
-    await page.waitForTimeout(300)
   })
 })

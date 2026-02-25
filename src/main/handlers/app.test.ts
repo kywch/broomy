@@ -15,7 +15,7 @@ vi.mock('electron', () => ({
 }))
 
 import { register } from './app'
-import type { HandlerContext } from './types'
+import { E2EScenario, type HandlerContext } from './types'
 import type { IpcMain } from 'electron'
 
 describe('app handler register', () => {
@@ -29,7 +29,7 @@ describe('app handler register', () => {
     mockCtx = {
       isDev: true,
       isE2ETest: false,
-      isScreenshotMode: false,
+      e2eScenario: E2EScenario.Default,
       isWindows: false,
       ptyProcesses: new Map(),
       ptyOwnerWindows: new Map(),

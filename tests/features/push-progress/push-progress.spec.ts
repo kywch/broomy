@@ -8,7 +8,8 @@
  *
  * Run with: pnpm test:feature-docs push-progress
  */
-import { test, expect, _electron as electron, ElectronApplication, Page } from '@playwright/test'
+import { test, expect, resetApp } from '../_shared/electron-fixture'
+import type { Page } from '@playwright/test'
 import path from 'path'
 import fs from 'fs'
 import { fileURLToPath } from 'url'
@@ -22,11 +23,9 @@ const FEATURE_DIR = __dirname
 const SCREENSHOTS = path.join(FEATURE_DIR, 'screenshots')
 const FEATURES_ROOT = path.join(__dirname, '..')
 
-let electronApp: ElectronApplication
 let page: Page
 const steps: FeatureStep[] = []
 
-test.setTimeout(60000)
 
 /** Set the explorer panel to the source-control tab */
 async function openSourceControl() {
@@ -36,7 +35,7 @@ async function openSourceControl() {
     const cls = await explorerButton.getAttribute('class').catch(() => '')
     if (!cls?.includes('bg-accent')) {
       await explorerButton.click()
-      await page.waitForTimeout(300)
+      await expect(page.locator('[data-panel-id="explorer"]')).toBeVisible()
     }
   }
 
@@ -49,7 +48,7 @@ async function openSourceControl() {
     const state = store.getState()
     state.setExplorerFilter(state.activeSessionId, 'source-control')
   })
-  await page.waitForTimeout(500)
+  await expect(page.locator('[data-panel-id="explorer"]').getByText(/^Changes \(/)).toBeVisible()
 }
 
 /** Set the active session's status via the store */
@@ -65,28 +64,18 @@ async function setSessionStatus(status: string) {
     const state = store.getState()
     state.updateAgentMonitor(state.activeSessionId, { status: s })
   }, status)
-  await page.waitForTimeout(300)
+  // Wait for the status indicator to reflect the change
+  if (status === 'working') {
+    await expect(page.locator('.animate-spin').first()).toBeVisible()
+  } else {
+    await expect(page.locator('.bg-status-idle, .bg-green-400').first()).toBeVisible()
+  }
 }
 
 test.beforeAll(async () => {
   await fs.promises.mkdir(SCREENSHOTS, { recursive: true })
 
-  electronApp = await electron.launch({
-    args: [path.join(__dirname, '..', '..', '..', 'out', 'main', 'index.js')],
-    env: {
-      ...process.env,
-      NODE_ENV: 'production',
-      E2E_TEST: 'true',
-      E2E_HEADLESS: process.env.E2E_HEADLESS ?? 'true',
-      SCREENSHOT_MODE: 'true',
-    },
-  })
-
-  page = await electronApp.firstWindow()
-  await page.setViewportSize({ width: 1400, height: 900 })
-  await page.waitForLoadState('domcontentloaded')
-  await page.waitForSelector('#root > div', { timeout: 15000 })
-  await page.waitForTimeout(3000)
+  ;({ page } = await resetApp({ scenario: 'marketing' }))
 })
 
 test.afterAll(async () => {
@@ -105,9 +94,6 @@ test.afterAll(async () => {
   )
   await generateIndex(FEATURES_ROOT)
 
-  if (electronApp) {
-    await electronApp.close()
-  }
 })
 
 test.describe.serial('Feature: Push Progress Indicator', () => {
@@ -162,34 +148,43 @@ test.describe.serial('Feature: Push Progress Indicator', () => {
   })
 
   test('Step 3: Green unread dot after operation completes', async () => {
-    // Simulate a long operation: set workingStartTime 4 seconds ago so the
-    // working→idle transition triggers the isUnread flag.
+    // First, transition the active session back to idle
+    await setSessionStatus('idle')
+
+    // Demonstrate the unread indicator on a non-active session (the second one).
+    // In real usage, the user is on one session while another finishes working.
     await page.evaluate(() => {
       const store = (window as Record<string, unknown>).__sessionStore as {
         getState: () => {
           activeSessionId: string
-          sessions: { id: string; workingStartTime: number | null }[]
+          sessions: { id: string; status: string; workingStartTime: number | null }[]
+          updateAgentMonitor: (id: string, update: { status: string }) => void
         }
         setState: (update: { sessions: unknown[] }) => void
       }
       if (!store) return
       const state = store.getState()
+      // Find a session that is NOT the active one
+      const otherSession = state.sessions.find((s) => s.id !== state.activeSessionId)
+      if (!otherSession) return
+
+      // Set it to working with a start time 4 seconds ago
       const sessions = state.sessions.map((s) =>
-        s.id === state.activeSessionId
-          ? { ...s, workingStartTime: Date.now() - 4000 }
+        s.id === otherSession.id
+          ? { ...s, status: 'working', workingStartTime: Date.now() - 4000 }
           : s,
       )
       store.setState({ sessions })
-    })
 
-    // Now transition to idle — store will detect 4s of working and set isUnread
-    await setSessionStatus('idle')
+      // Transition to idle — triggers isUnread since working duration >= 3s
+      state.updateAgentMonitor(otherSession.id, { status: 'idle' })
+    })
 
     // Verify green unread dot is visible (green with glow shadow)
     const unreadDot = page.locator('.bg-green-400').first()
     await expect(unreadDot).toBeVisible()
 
-    // Verify spinner is gone
+    // Verify active session spinner is gone
     const spinner = page.locator('.animate-spin')
     await expect(spinner).not.toBeVisible()
 
@@ -203,7 +198,7 @@ test.describe.serial('Feature: Push Progress Indicator', () => {
       screenshotPath: 'screenshots/03-unread-after-sync.png',
       caption: 'Green "unread" dot after operation completes',
       description:
-        'When the git operation finishes, withGitProgress explicitly transitions the session ' +
+        'When a git operation finishes on a background session, withGitProgress transitions it ' +
         'to idle. If the operation lasted 3+ seconds, the store marks the session as unread \u2014 ' +
         'shown as a green glowing dot. This reuses the same notification system that alerts ' +
         'users when an agent finishes a task.',

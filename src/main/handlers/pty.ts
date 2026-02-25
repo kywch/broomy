@@ -1,9 +1,16 @@
+/**
+ * IPC handlers for pseudo-terminal (PTY) lifecycle management.
+ *
+ * Creates, resizes, writes to, and destroys PTY processes using node-pty.
+ * In E2E mode, spawns a fake shell script for deterministic test output.
+ */
 import { BrowserWindow, IpcMain } from 'electron'
 import { join } from 'path'
 import { homedir } from 'os'
 import * as pty from 'node-pty'
 import { isWindows, getDefaultShell, resolveWindowsCommand } from '../platform'
 import { HandlerContext } from './types'
+import { getScenarioData } from './scenarios'
 
 /**
  * On Windows, resolve the base command to its full path so agents installed
@@ -48,16 +55,10 @@ export function register(ipcMain: IpcMain, ctx: HandlerContext): void {
 
         if (options.command) {
           // This is an agent terminal - run the fake claude script
-          let fakeClaude: string
-          if (ctx.isScreenshotMode && options.sessionId === '1') {
-            // First session gets the long "working" script for screenshots
-            fakeClaude = join(__dirname, '../../scripts/fake-claude-screenshot.sh')
-          } else if (ctx.isScreenshotMode) {
-            // Other sessions get the quick "idle" script for screenshots
-            fakeClaude = join(__dirname, '../../scripts/fake-claude-screenshot-idle.sh')
-          } else {
-            fakeClaude = ctx.FAKE_CLAUDE_SCRIPT || join(__dirname, '../../scripts/fake-claude.sh')
-          }
+          const scenarioScript = getScenarioData(ctx.e2eScenario).agentScript(options.sessionId || '')
+          const fakeClaude = scenarioScript
+            ? join(__dirname, `../../scripts/${scenarioScript}`)
+            : ctx.FAKE_CLAUDE_SCRIPT || join(__dirname, '../../scripts/fake-claude.sh')
           initialCommand = `bash "${fakeClaude}"`
         } else {
           // Regular user terminal - just echo ready marker

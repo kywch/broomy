@@ -6,7 +6,8 @@
  *
  * Run with: pnpm test:feature-docs explorer-move-rename
  */
-import { test, expect, _electron as electron, ElectronApplication, Page } from '@playwright/test'
+import { test, expect, resetApp } from '../_shared/electron-fixture'
+import type { Page } from '@playwright/test'
 import path from 'path'
 import fs from 'fs'
 import { fileURLToPath } from 'url'
@@ -20,31 +21,14 @@ const FEATURE_DIR = __dirname
 const SCREENSHOTS = path.join(FEATURE_DIR, 'screenshots')
 const FEATURES_ROOT = path.join(__dirname, '..')
 
-let electronApp: ElectronApplication
 let page: Page
 const steps: FeatureStep[] = []
 
-test.setTimeout(60000)
 
 test.beforeAll(async () => {
   await fs.promises.mkdir(SCREENSHOTS, { recursive: true })
 
-  electronApp = await electron.launch({
-    args: [path.join(__dirname, '..', '..', '..', 'out', 'main', 'index.js')],
-    env: {
-      ...process.env,
-      NODE_ENV: 'production',
-      E2E_TEST: 'true',
-      SCREENSHOT_MODE: 'true',
-      E2E_HEADLESS: process.env.E2E_HEADLESS ?? 'true',
-    },
-  })
-
-  page = await electronApp.firstWindow()
-  await page.setViewportSize({ width: 1400, height: 900 })
-  await page.waitForLoadState('domcontentloaded')
-  await page.waitForSelector('#root > div', { timeout: 15000 })
-  await page.waitForTimeout(3000)
+  ;({ page } = await resetApp({ scenario: 'marketing' }))
 })
 
 test.afterAll(async () => {
@@ -61,9 +45,6 @@ test.afterAll(async () => {
   )
   await generateIndex(FEATURES_ROOT)
 
-  if (electronApp) {
-    await electronApp.close()
-  }
 })
 
 test.describe.serial('Feature: Explorer Rename & Drag-to-Move', () => {
@@ -71,7 +52,6 @@ test.describe.serial('Feature: Explorer Rename & Drag-to-Move', () => {
     const explorerButton = page.locator('button:has-text("Explorer")')
     await expect(explorerButton).toBeVisible()
     await explorerButton.click()
-    await page.waitForTimeout(500)
 
     const explorerPanel = page.locator('[data-panel-id="explorer"]')
     await expect(explorerPanel).toBeVisible()
@@ -80,14 +60,14 @@ test.describe.serial('Feature: Explorer Rename & Drag-to-Move', () => {
     const filesTab = explorerPanel.locator('button:has-text("Files")')
     if (await filesTab.isVisible()) {
       await filesTab.click()
-      await page.waitForTimeout(300)
     }
 
     // Expand src directory
     const srcDir = explorerPanel.locator('[data-tree-item]:has-text("src")')
     await expect(srcDir).toBeVisible()
     await srcDir.click()
-    await page.waitForTimeout(300)
+    // Wait for directory contents to appear
+    await expect(explorerPanel.locator('[data-tree-item]:has-text("middleware")')).toBeVisible()
 
     await screenshotElement(page, explorerPanel, path.join(SCREENSHOTS, '01-file-tree.png'), {
       maxHeight: 600,
@@ -107,13 +87,13 @@ test.describe.serial('Feature: Explorer Rename & Drag-to-Move', () => {
     const middlewareDir = explorerPanel.locator('[data-tree-item]:has-text("middleware")')
     await expect(middlewareDir).toBeVisible()
     await middlewareDir.click()
-    await page.waitForTimeout(300)
+    // Wait for directory contents to appear
+    await expect(explorerPanel.locator('[data-tree-item]:has-text("auth.ts")')).toBeVisible()
 
     // Right-click on auth.ts to show context menu
     const authFile = explorerPanel.locator('[data-tree-item]:has-text("auth.ts")').first()
     await expect(authFile).toBeVisible()
     await authFile.click({ button: 'right' })
-    await page.waitForTimeout(300)
 
     // The context menu is a native menu rendered by Electron, so we capture the explorer
     // after the right-click. The menu popup is handled by the main process.
@@ -161,7 +141,6 @@ test.describe.serial('Feature: Explorer Rename & Drag-to-Move', () => {
     const middlewareDir = explorerPanel.locator('[data-tree-item]:has-text("middleware")')
     await expect(middlewareDir).toBeVisible()
     await middlewareDir.click({ button: 'right' })
-    await page.waitForTimeout(300)
 
     await screenshotElement(page, explorerPanel, path.join(SCREENSHOTS, '04-dir-context-menu.png'), {
       maxHeight: 600,
@@ -182,7 +161,6 @@ test.describe.serial('Feature: Explorer Rename & Drag-to-Move', () => {
     const servicesDir = explorerPanel.locator('[data-tree-item]:has-text("services")')
     if (await servicesDir.isVisible()) {
       await servicesDir.click()
-      await page.waitForTimeout(300)
     }
 
     await screenshotElement(page, explorerPanel, path.join(SCREENSHOTS, '05-full-tree.png'), {

@@ -7,11 +7,12 @@
  *
  * Run with: pnpm test:feature-docs
  */
-import { test, expect, _electron as electron, ElectronApplication, Page } from '@playwright/test'
+import { test, expect, resetApp } from '../_shared/electron-fixture'
+import type { Page } from '@playwright/test'
 import path from 'path'
 import fs from 'fs'
 import { fileURLToPath } from 'url'
-import { screenshotElement } from '../_shared/screenshot-helpers'
+import { screenshotElement, waitForDiffEditor } from '../_shared/screenshot-helpers'
 import { generateFeaturePage, generateIndex, FeatureStep } from '../_shared/template'
 
 const __filename = fileURLToPath(import.meta.url)
@@ -21,11 +22,9 @@ const FEATURE_DIR = __dirname
 const SCREENSHOTS = path.join(FEATURE_DIR, 'screenshots')
 const FEATURES_ROOT = path.join(__dirname, '..')
 
-let electronApp: ElectronApplication
 let page: Page
 const steps: FeatureStep[] = []
 
-test.setTimeout(60000)
 
 /** Navigate the explorer panel to the source-control tab */
 async function openSourceControl(page: Page) {
@@ -35,7 +34,7 @@ async function openSourceControl(page: Page) {
     const cls = await explorerButton.getAttribute('class').catch(() => '')
     if (!cls?.includes('bg-accent')) {
       await explorerButton.click()
-      await page.waitForTimeout(300)
+      await expect(page.locator('[data-panel-id="explorer"]')).toBeVisible()
     }
   }
 
@@ -48,27 +47,13 @@ async function openSourceControl(page: Page) {
     const state = store.getState()
     state.setExplorerFilter(state.activeSessionId, 'source-control')
   })
-  await page.waitForTimeout(500)
+  await expect(page.locator('[data-panel-id="explorer"]').getByText(/^Changes \(/)).toBeVisible()
 }
 
 test.beforeAll(async () => {
   await fs.promises.mkdir(SCREENSHOTS, { recursive: true })
 
-  electronApp = await electron.launch({
-    args: [path.join(__dirname, '..', '..', '..', 'out', 'main', 'index.js')],
-    env: {
-      ...process.env,
-      NODE_ENV: 'production',
-      E2E_TEST: 'true',
-      E2E_HEADLESS: process.env.E2E_HEADLESS ?? 'true',
-    },
-  })
-
-  page = await electronApp.firstWindow()
-  await page.setViewportSize({ width: 1400, height: 900 })
-  await page.waitForLoadState('domcontentloaded')
-  await page.waitForSelector('#root > div', { timeout: 15000 })
-  await page.waitForTimeout(3000)
+  ;({ page } = await resetApp())
 })
 
 test.afterAll(async () => {
@@ -84,9 +69,6 @@ test.afterAll(async () => {
   )
   await generateIndex(FEATURES_ROOT)
 
-  if (electronApp) {
-    await electronApp.close()
-  }
 })
 
 test.describe.serial('Feature: Diff View Word Wrap', () => {
@@ -114,21 +96,13 @@ test.describe.serial('Feature: Diff View Word Wrap', () => {
     // Click on README.md to open it in diff mode
     const readmeEntry = page.locator('text=README.md').first()
     await readmeEntry.click()
-    await page.waitForTimeout(1000)
 
-    // The file viewer should now be showing the diff
-    // Look for the Monaco diff editor container
-    const diffEditor = page.locator('.monaco-diff-editor').first()
-    await expect(diffEditor).toBeVisible({ timeout: 10000 })
+    // Wait for the diff editor to fully stabilize (both sides rendered, sash positioned)
+    const fileViewerArea = page.locator('[data-panel-id="fileViewer"]').first()
+    await waitForDiffEditor(fileViewerArea)
 
     // Screenshot the entire file viewer area (right side of the layout)
-    const fileViewerArea = page.locator('[data-panel-id="fileViewer"]').first()
-    if (await fileViewerArea.isVisible()) {
-      await screenshotElement(page, fileViewerArea, path.join(SCREENSHOTS, '02-diff-word-wrap.png'))
-    } else {
-      // Fallback: screenshot the diff editor itself
-      await screenshotElement(page, diffEditor, path.join(SCREENSHOTS, '02-diff-word-wrap.png'))
-    }
+    await screenshotElement(page, fileViewerArea, path.join(SCREENSHOTS, '02-diff-word-wrap.png'))
     steps.push({
       screenshotPath: 'screenshots/02-diff-word-wrap.png',
       caption: 'Diff view with word-wrapped long lines',
@@ -143,18 +117,12 @@ test.describe.serial('Feature: Diff View Word Wrap', () => {
     const inlineButton = page.locator('button[title="Switch to inline view"]')
     if (await inlineButton.isVisible()) {
       await inlineButton.click()
-      await page.waitForTimeout(500)
     }
-
-    const diffEditor = page.locator('.monaco-diff-editor').first()
-    await expect(diffEditor).toBeVisible({ timeout: 5000 })
 
     const fileViewerArea = page.locator('[data-panel-id="fileViewer"]').first()
-    if (await fileViewerArea.isVisible()) {
-      await screenshotElement(page, fileViewerArea, path.join(SCREENSHOTS, '03-inline-diff-wrap.png'))
-    } else {
-      await screenshotElement(page, diffEditor, path.join(SCREENSHOTS, '03-inline-diff-wrap.png'))
-    }
+    await waitForDiffEditor(fileViewerArea)
+
+    await screenshotElement(page, fileViewerArea, path.join(SCREENSHOTS, '03-inline-diff-wrap.png'))
     steps.push({
       screenshotPath: 'screenshots/03-inline-diff-wrap.png',
       caption: 'Inline diff view also wraps long lines',

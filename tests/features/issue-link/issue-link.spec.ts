@@ -7,7 +7,8 @@
  *
  * Run with: pnpm test:feature-docs
  */
-import { test, expect, _electron as electron, ElectronApplication, Page } from '@playwright/test'
+import { test, expect, resetApp } from '../_shared/electron-fixture'
+import type { Page } from '@playwright/test'
 import path from 'path'
 import fs from 'fs'
 import { fileURLToPath } from 'url'
@@ -21,32 +22,14 @@ const FEATURE_DIR = __dirname
 const SCREENSHOTS = path.join(FEATURE_DIR, 'screenshots')
 const FEATURES_ROOT = path.join(__dirname, '..')
 
-let electronApp: ElectronApplication
 let page: Page
 const steps: FeatureStep[] = []
 
-test.setTimeout(60000)
 
 test.beforeAll(async () => {
   await fs.promises.mkdir(SCREENSHOTS, { recursive: true })
 
-  electronApp = await electron.launch({
-    args: [path.join(__dirname, '..', '..', '..', 'out', 'main', 'index.js')],
-    env: {
-      ...process.env,
-      NODE_ENV: 'production',
-      E2E_TEST: 'true',
-      E2E_HEADLESS: process.env.E2E_HEADLESS ?? 'true',
-    },
-  })
-
-  page = await electronApp.firstWindow()
-  await page.setViewportSize({ width: 1400, height: 900 })
-  await page.waitForLoadState('domcontentloaded')
-  await page.waitForSelector('#root > div', { timeout: 15000 })
-
-  // Wait for terminals to initialize
-  await page.waitForTimeout(3000)
+  ;({ page } = await resetApp())
 })
 
 test.afterAll(async () => {
@@ -63,9 +46,6 @@ test.afterAll(async () => {
   )
   await generateIndex(FEATURES_ROOT)
 
-  if (electronApp) {
-    await electronApp.close()
-  }
 })
 
 /** Helper to open explorer panel and switch to source control tab */
@@ -75,7 +55,7 @@ async function openSourceControl(page: Page): Promise<void> {
   const explorerClasses = await explorerButton.getAttribute('class').catch(() => '')
   if (!explorerClasses?.includes('bg-accent')) {
     await explorerButton.click()
-    await page.waitForTimeout(300)
+    await expect(page.locator('[data-panel-id="explorer"]')).toBeVisible()
   }
 
   // Switch to source control tab via store
@@ -87,7 +67,7 @@ async function openSourceControl(page: Page): Promise<void> {
     const state = store.getState()
     state.setExplorerFilter(state.activeSessionId, 'source-control')
   })
-  await page.waitForTimeout(1000)
+  await expect(page.locator('[data-panel-id="explorer"]').getByText(/^Changes \(/)).toBeVisible()
 }
 
 test.describe.serial('Feature: Issue Link in Source Control', () => {
@@ -95,7 +75,6 @@ test.describe.serial('Feature: Issue Link in Source Control', () => {
     // Click "+ New Session" button
     const newSessionButton = page.locator('button:has-text("+ New Session")')
     await newSessionButton.click()
-    await page.waitForTimeout(500)
 
     // The new session dialog should appear with the repo list
     const dialog = page.locator('.fixed.inset-0.z-50 > div')
@@ -116,7 +95,6 @@ test.describe.serial('Feature: Issue Link in Source Control', () => {
 
     // Click Issues
     await issuesButton.click()
-    await page.waitForTimeout(500)
   })
 
   test('Step 2: Issues list — select an issue', async () => {
@@ -127,7 +105,7 @@ test.describe.serial('Feature: Issue Link in Source Control', () => {
     await expect(issueRow).toBeVisible()
 
     // Verify the issue title is shown
-    await expect(dialog.locator('text=Add user authentication')).toBeVisible()
+    await expect(dialog.locator('text=Add support for the dark mode toggle')).toBeVisible()
 
     await screenshotElement(page, dialog, path.join(SCREENSHOTS, '02-issues-list.png'))
     steps.push({
@@ -140,7 +118,6 @@ test.describe.serial('Feature: Issue Link in Source Control', () => {
 
     // Select the issue
     await issueRow.click()
-    await page.waitForTimeout(500)
   })
 
   test('Step 3: New branch view — issue details carried through', async () => {
@@ -149,7 +126,7 @@ test.describe.serial('Feature: Issue Link in Source Control', () => {
     // Should now be on the new branch view with issue details
     const issueInfo = dialog.locator('text=Issue #42')
     await expect(issueInfo).toBeVisible()
-    await expect(dialog.locator('text=Add user authentication')).toBeVisible()
+    await expect(dialog.locator('text=Add support for the dark mode toggle')).toBeVisible()
 
     await screenshotElement(page, dialog, path.join(SCREENSHOTS, '03-new-branch-from-issue.png'))
     steps.push({
@@ -163,9 +140,7 @@ test.describe.serial('Feature: Issue Link in Source Control', () => {
     // Close dialog without creating (we'll use the pre-existing sessions for the next steps)
     // Press Escape twice: first goes back to home view, second closes the dialog
     await page.keyboard.press('Escape')
-    await page.waitForTimeout(300)
     await page.keyboard.press('Escape')
-    await page.waitForTimeout(500)
 
     // Ensure the dialog overlay is gone
     const overlay = page.locator('.fixed.inset-0.z-50')
@@ -178,7 +153,6 @@ test.describe.serial('Feature: Issue Link in Source Control', () => {
     const broomySession = page.locator('.cursor-pointer:has-text("broomy")')
     await expect(broomySession).toBeVisible()
     await broomySession.click()
-    await page.waitForTimeout(500)
 
     await openSourceControl(page)
 
@@ -208,7 +182,6 @@ test.describe.serial('Feature: Issue Link in Source Control', () => {
     // It also has issueNumber: 15, but the PR should take priority
     const backendSession = page.locator('.cursor-pointer:has-text("backend-api")')
     await backendSession.click()
-    await page.waitForTimeout(500)
 
     await openSourceControl(page)
 

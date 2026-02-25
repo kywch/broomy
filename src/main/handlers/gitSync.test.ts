@@ -19,12 +19,12 @@ vi.mock('./types', async (importOriginal) => {
 })
 
 import { register } from './gitSync'
-import type { HandlerContext } from './types'
+import { E2EScenario, type HandlerContext } from './types'
 
 function createMockCtx(overrides: Partial<HandlerContext> = {}): HandlerContext {
   return {
     isE2ETest: false,
-    isScreenshotMode: false,
+    e2eScenario: E2EScenario.Default,
     isDev: false,
     isWindows: false,
     ptyProcesses: new Map(),
@@ -214,7 +214,7 @@ describe('gitSync handlers', () => {
     })
 
     it('returns screenshot mode changes', async () => {
-      const handlers = setupHandlers(createMockCtx({ isE2ETest: true, isScreenshotMode: true }))
+      const handlers = setupHandlers(createMockCtx({ isE2ETest: true, e2eScenario: E2EScenario.Marketing }))
       const result = await handlers['git:branchChanges'](null, '/repo')
       expect(result.files.length).toBeGreaterThan(2)
     })
@@ -275,7 +275,7 @@ describe('gitSync handlers', () => {
     })
 
     it('returns screenshot mode commits', async () => {
-      const handlers = setupHandlers(createMockCtx({ isE2ETest: true, isScreenshotMode: true }))
+      const handlers = setupHandlers(createMockCtx({ isE2ETest: true, e2eScenario: E2EScenario.Marketing }))
       const result = await handlers['git:branchCommits'](null, '/repo')
       expect(result.commits).toHaveLength(4)
     })

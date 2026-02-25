@@ -24,7 +24,7 @@ test.beforeAll(async () => {
       ...process.env,
       NODE_ENV: 'production',
       E2E_TEST: 'true',
-      SCREENSHOT_MODE: 'true',
+      E2E_SCENARIO: 'marketing',
       E2E_HEADLESS: 'false',
     },
   })

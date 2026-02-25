@@ -6,7 +6,8 @@
  *
  * Run with: pnpm test:feature-docs
  */
-import { test, expect, _electron as electron, ElectronApplication, Page } from '@playwright/test'
+import { test, expect, resetApp } from '../_shared/electron-fixture'
+import type { Page } from '@playwright/test'
 import path from 'path'
 import fs from 'fs'
 import { fileURLToPath } from 'url'
@@ -20,32 +21,14 @@ const FEATURE_DIR = __dirname
 const SCREENSHOTS = path.join(FEATURE_DIR, 'screenshots')
 const FEATURES_ROOT = path.join(__dirname, '..')
 
-let electronApp: ElectronApplication
 let page: Page
 const steps: FeatureStep[] = []
 
-test.setTimeout(60000)
 
 test.beforeAll(async () => {
   await fs.promises.mkdir(SCREENSHOTS, { recursive: true })
 
-  electronApp = await electron.launch({
-    args: [path.join(__dirname, '..', '..', '..', 'out', 'main', 'index.js')],
-    env: {
-      ...process.env,
-      NODE_ENV: 'production',
-      E2E_TEST: 'true',
-      E2E_HEADLESS: process.env.E2E_HEADLESS ?? 'true',
-    },
-  })
-
-  page = await electronApp.firstWindow()
-  await page.setViewportSize({ width: 1400, height: 900 })
-  await page.waitForLoadState('domcontentloaded')
-  await page.waitForSelector('#root > div', { timeout: 15000 })
-
-  // Wait for terminals to initialize
-  await page.waitForTimeout(3000)
+  ;({ page } = await resetApp())
 })
 
 test.afterAll(async () => {
@@ -62,9 +45,6 @@ test.afterAll(async () => {
   )
   await generateIndex(FEATURES_ROOT)
 
-  if (electronApp) {
-    await electronApp.close()
-  }
 })
 
 /** Ensure the explorer panel is visible and switch to the review tab */
@@ -75,7 +55,7 @@ async function openReviewInExplorer(p: Page) {
     const cls = await explorerButton.getAttribute('class').catch(() => '')
     if (!cls?.includes('bg-accent')) {
       await explorerButton.click()
-      await p.waitForTimeout(300)
+      await expect(explorerButton).toHaveClass(/bg-accent/, { timeout: 5000 })
     }
   }
 
@@ -93,7 +73,7 @@ async function openReviewInExplorer(p: Page) {
     state.setPanelVisibility(state.activeSessionId, 'explorer', true)
     state.setExplorerFilter(state.activeSessionId, 'review')
   })
-  await p.waitForTimeout(500)
+  await expect(p.locator('text=Overview')).toBeVisible({ timeout: 10000 })
 }
 
 test.describe.serial('Feature: PR Description & Comments', () => {
@@ -126,14 +106,13 @@ test.describe.serial('Feature: PR Description & Comments', () => {
       })
     })
 
-    // Click the first session
-    const firstSession = page.locator('.cursor-pointer').first()
+    // Click the first session card (in the sidebar session list)
+    const firstSession = page.locator('[data-panel-id="sidebar"] div.cursor-pointer').first()
     await firstSession.click()
-    await page.waitForTimeout(500)
+    await expect(firstSession).toHaveClass(/bg-accent/, { timeout: 5000 })
 
     // Open review tab in explorer
     await openReviewInExplorer(page)
-    await page.waitForTimeout(2000)
 
     // Screenshot the explorer panel with review tab and PR header
     const explorer = page.locator('[data-panel-id="explorer"]')
@@ -175,10 +154,10 @@ test.describe.serial('Feature: PR Description & Comments', () => {
   })
 
   test('Step 3: PR Description section detail', async () => {
-    // Scroll to make PR Description visible
-    const scrollContainer = page.locator('[data-panel-id="explorer"] .overflow-y-auto').first()
-    await scrollContainer.evaluate(el => el.scrollTop = 0)
-    await page.waitForTimeout(300)
+    // Ensure PR Description section is expanded
+    const prDescHeader = page.locator('button:has-text("PR Description")').first()
+    await prDescHeader.scrollIntoViewIfNeeded()
+    await prDescHeader.click()
 
     // Find the PR Description text content
     const descContent = page.locator('text=This PR adds dark mode support')
@@ -201,23 +180,22 @@ test.describe.serial('Feature: PR Description & Comments', () => {
   test('Step 4: PR Comments section with threaded replies', async () => {
     // Make the window taller so we have room to show the full PR Comments section
     await page.setViewportSize({ width: 1400, height: 1200 })
-    await page.waitForTimeout(500)
 
     const scrollContainer = page.locator('[data-panel-id="explorer"] .overflow-y-auto').first()
 
     // Scroll to bottom so the PR Comments header is visible
     await scrollContainer.evaluate(el => el.scrollTop = el.scrollHeight)
-    await page.waitForTimeout(300)
 
-    // Find PR Comments header and click to expand (it defaults to collapsed)
+    // PR Comments section defaults to open — verify it's visible
     const prCommentsBtn = page.locator('button:has-text("PR Comments")')
     await expect(prCommentsBtn).toBeVisible({ timeout: 5000 })
-    await prCommentsBtn.click()
-    await page.waitForTimeout(500)
+
+    // Verify the comment content is visible (sibling div after the button)
+    const commentsSection = page.locator('button:has-text("PR Comments") + div').first()
+    await expect(commentsSection).toBeVisible({ timeout: 5000 })
 
     // Scroll again to ensure expanded comments are fully visible
     await scrollContainer.evaluate(el => el.scrollTop = el.scrollHeight)
-    await page.waitForTimeout(300)
 
     // Screenshot from the PR Comments header downward
     const headerBox = await prCommentsBtn.boundingBox()
@@ -239,7 +217,6 @@ test.describe.serial('Feature: PR Description & Comments', () => {
 
     // Restore viewport size
     await page.setViewportSize({ width: 1400, height: 900 })
-    await page.waitForTimeout(300)
     steps.push({
       screenshotPath: 'screenshots/04-pr-comments.png',
       caption: 'PR Comments aggregated from GitHub',
@@ -255,13 +232,13 @@ test.describe.serial('Feature: PR Description & Comments', () => {
     // Scroll back to top
     const scrollContainer = page.locator('[data-panel-id="explorer"] .overflow-y-auto').first()
     await scrollContainer.evaluate(el => el.scrollTop = 0)
-    await page.waitForTimeout(300)
 
     // Click PR Description header to collapse it
     const prDescHeader = page.locator('button:has-text("PR Description")').first()
     if (await prDescHeader.isVisible()) {
       await prDescHeader.click()
-      await page.waitForTimeout(300)
+      // Wait for PR Description content to be hidden after collapsing
+      await expect(page.locator('text=This PR adds dark mode support')).toBeHidden({ timeout: 5000 })
     }
 
     const explorer = page.locator('[data-panel-id="explorer"]')

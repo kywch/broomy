@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import type { HandlerContext } from './types'
+import { E2EScenario, type HandlerContext } from './types'
 
 // Mock node-pty
 const mockPtyWrite = vi.fn()
@@ -26,6 +26,7 @@ vi.mock('electron', () => ({
 vi.mock('../platform', () => ({
   isWindows: false,
   getDefaultShell: () => '/bin/zsh',
+  normalizePath: (p: string) => p.replace(/\\/g, '/'),
 }))
 
 function createMockPtyProcess() {
@@ -41,7 +42,7 @@ function createMockPtyProcess() {
 function createCtx(overrides: Partial<HandlerContext> = {}): HandlerContext {
   return {
     isE2ETest: false,
-    isScreenshotMode: false,
+    e2eScenario: E2EScenario.Default,
     isDev: false,
     isWindows: false,
     ptyProcesses: new Map(),
@@ -134,7 +135,7 @@ describe('pty handlers', () => {
     it('uses screenshot fake-claude for session 1 in screenshot mode', async () => {
       vi.useFakeTimers()
       const { register } = await import('./pty')
-      const ctx = createCtx({ isE2ETest: true, isScreenshotMode: true })
+      const ctx = createCtx({ isE2ETest: true, e2eScenario: E2EScenario.Marketing })
       register(mockIpcMain as never, ctx)
 
       const mockProcess = createMockPtyProcess()
@@ -158,7 +159,7 @@ describe('pty handlers', () => {
     it('uses screenshot-idle for non-session-1 in screenshot mode', async () => {
       vi.useFakeTimers()
       const { register } = await import('./pty')
-      const ctx = createCtx({ isE2ETest: true, isScreenshotMode: true })
+      const ctx = createCtx({ isE2ETest: true, e2eScenario: E2EScenario.Marketing })
       register(mockIpcMain as never, ctx)
 
       const mockProcess = createMockPtyProcess()

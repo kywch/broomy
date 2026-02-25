@@ -30,12 +30,12 @@ import { BrowserWindow } from 'electron'
 import { watch } from 'fs'
 import { readdir, readFile, writeFile, appendFile, stat, mkdir, rm, access } from 'fs/promises'
 import { register } from './fsCore'
-import type { HandlerContext } from './types'
+import { E2EScenario, type HandlerContext } from './types'
 
 function createMockCtx(overrides: Partial<HandlerContext> = {}): HandlerContext {
   return {
     isE2ETest: false,
-    isScreenshotMode: false,
+    e2eScenario: E2EScenario.Default,
     isDev: false,
     isWindows: false,
     ptyProcesses: new Map(),
@@ -97,35 +97,35 @@ describe('fsCore handlers', () => {
     })
 
     it('returns screenshot-mode mock data for /src path', async () => {
-      const handlers = setupHandlers(createMockCtx({ isE2ETest: true, isScreenshotMode: true }))
+      const handlers = setupHandlers(createMockCtx({ isE2ETest: true, e2eScenario: E2EScenario.Marketing }))
       const result = await handlers['fs:readDir'](null, '/project/src')
       expect(result.some((e: { name: string }) => e.name === 'components')).toBe(true)
       expect(result.some((e: { name: string }) => e.name === 'app.ts')).toBe(true)
     })
 
     it('returns screenshot-mode mock data for /middleware path', async () => {
-      const handlers = setupHandlers(createMockCtx({ isE2ETest: true, isScreenshotMode: true }))
+      const handlers = setupHandlers(createMockCtx({ isE2ETest: true, e2eScenario: E2EScenario.Marketing }))
       const result = await handlers['fs:readDir'](null, '/project/src/middleware')
       expect(result.some((e: { name: string }) => e.name === 'auth.ts')).toBe(true)
       expect(result.some((e: { name: string }) => e.name === 'cors.ts')).toBe(true)
     })
 
     it('returns screenshot-mode mock data for /services path', async () => {
-      const handlers = setupHandlers(createMockCtx({ isE2ETest: true, isScreenshotMode: true }))
+      const handlers = setupHandlers(createMockCtx({ isE2ETest: true, e2eScenario: E2EScenario.Marketing }))
       const result = await handlers['fs:readDir'](null, '/project/src/services')
       expect(result.some((e: { name: string }) => e.name === 'session.ts')).toBe(true)
       expect(result.some((e: { name: string }) => e.name === 'token.ts')).toBe(true)
     })
 
     it('returns screenshot-mode mock data for /routes path', async () => {
-      const handlers = setupHandlers(createMockCtx({ isE2ETest: true, isScreenshotMode: true }))
+      const handlers = setupHandlers(createMockCtx({ isE2ETest: true, e2eScenario: E2EScenario.Marketing }))
       const result = await handlers['fs:readDir'](null, '/project/src/routes')
       expect(result.some((e: { name: string }) => e.name === 'auth.ts')).toBe(true)
       expect(result.some((e: { name: string }) => e.name === 'health.ts')).toBe(true)
     })
 
     it('returns screenshot-mode mock data for root path', async () => {
-      const handlers = setupHandlers(createMockCtx({ isE2ETest: true, isScreenshotMode: true }))
+      const handlers = setupHandlers(createMockCtx({ isE2ETest: true, e2eScenario: E2EScenario.Marketing }))
       const result = await handlers['fs:readDir'](null, '/project')
       expect(result.some((e: { name: string }) => e.name === 'src')).toBe(true)
       expect(result.some((e: { name: string }) => e.name === 'package.json')).toBe(true)
@@ -168,14 +168,14 @@ describe('fsCore handlers', () => {
     })
 
     it('returns screenshot auth.ts content in screenshot mode', async () => {
-      const handlers = setupHandlers(createMockCtx({ isE2ETest: true, isScreenshotMode: true }))
+      const handlers = setupHandlers(createMockCtx({ isE2ETest: true, e2eScenario: E2EScenario.Marketing }))
       const result = await handlers['fs:readFile'](null, '/project/src/middleware/auth.ts')
       expect(result).toContain('authenticate')
       expect(result).toContain('TokenService')
     })
 
     it('returns screenshot review.json content in screenshot mode', async () => {
-      const handlers = setupHandlers(createMockCtx({ isE2ETest: true, isScreenshotMode: true }))
+      const handlers = setupHandlers(createMockCtx({ isE2ETest: true, e2eScenario: E2EScenario.Marketing }))
       const result = await handlers['fs:readFile'](null, '/tmp/broomy-review-abc123/review.json')
       const parsed = JSON.parse(result)
       expect(parsed.version).toBe(1)
@@ -184,7 +184,7 @@ describe('fsCore handlers', () => {
     })
 
     it('returns empty comments array for screenshot comments.json', async () => {
-      const handlers = setupHandlers(createMockCtx({ isE2ETest: true, isScreenshotMode: true }))
+      const handlers = setupHandlers(createMockCtx({ isE2ETest: true, e2eScenario: E2EScenario.Marketing }))
       const result = await handlers['fs:readFile'](null, '/tmp/broomy-review-abc123/comments.json')
       expect(result).toBe('[]')
     })
@@ -265,7 +265,7 @@ describe('fsCore handlers', () => {
 
   describe('fs:exists', () => {
     it('returns true for screenshot-mode review files', async () => {
-      const handlers = setupHandlers(createMockCtx({ isE2ETest: true, isScreenshotMode: true }))
+      const handlers = setupHandlers(createMockCtx({ isE2ETest: true, e2eScenario: E2EScenario.Marketing }))
       const result = await handlers['fs:exists'](null, '/tmp/broomy-review-abc/review.json')
       expect(result).toBe(true)
     })

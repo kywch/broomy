@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import type { HandlerContext } from './types'
+import { E2EScenario, type HandlerContext } from './types'
 
 // Mock child_process.exec
 const mockExec = vi.fn()
@@ -38,7 +38,7 @@ vi.mock('../platform', () => ({
 function createCtx(overrides: Partial<HandlerContext> = {}): HandlerContext {
   return {
     isE2ETest: false,
-    isScreenshotMode: false,
+    e2eScenario: E2EScenario.Default,
     isDev: false,
     isWindows: false,
     ptyProcesses: new Map(),
