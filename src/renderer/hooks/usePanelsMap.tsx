@@ -150,7 +150,7 @@ function useFileViewerPanel(config: PanelsMapConfig) {
                 diffLabel={isActive ? diffLabel : undefined}
                 reviewContext={session.sessionType === 'review' ? {
                   sessionDirectory: session.directory,
-                  commentsFilePath: `${tmpdir}/broomy-review-${session.id}/comments.json`,
+                  commentsFilePath: `${session.directory}/.broomy/comments.json`,
                 } : undefined}
                 onOpenFile={isActive ? (targetPath, line) => navigateToFile({ filePath: targetPath, openInDiffMode: false, scrollToLine: line }) : undefined}
               />
