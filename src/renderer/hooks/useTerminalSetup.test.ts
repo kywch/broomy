@@ -58,6 +58,10 @@ vi.mock('@xterm/addon-serialize', () => {
   }
 })
 
+vi.mock('@xterm/addon-webgl', () => ({
+  WebglAddon: vi.fn(),
+}))
+
 // Mock the sub-hooks
 vi.mock('./useTerminalKeyboard', () => ({
   useTerminalKeyboard: vi.fn().mockReturnValue(vi.fn().mockReturnValue(true)),
@@ -73,6 +77,7 @@ vi.mock('../utils/terminalBufferRegistry', () => ({
     unregister: vi.fn(),
     getBuffer: vi.fn(),
     getLastLines: vi.fn(),
+    getSessionIds: vi.fn().mockReturnValue([]),
   },
 }))
 
@@ -234,14 +239,14 @@ describe('useTerminalSetup', () => {
     expect(terminalBufferRegistry.register).toHaveBeenCalledWith('session-1', expect.any(Function))
   })
 
-  it('does not register terminal buffer for non-agent terminals', () => {
+  it('registers terminal buffer for non-agent terminals with user suffix', () => {
     const config = makeConfig({ isAgentTerminal: false })
     const containerRef = makeContainerRef()
 
     renderHook(() => useTerminalSetup(config, containerRef))
 
     // eslint-disable-next-line @typescript-eslint/unbound-method
-    expect(terminalBufferRegistry.register).not.toHaveBeenCalled()
+    expect(terminalBufferRegistry.register).toHaveBeenCalledWith('session-1-user', expect.any(Function))
   })
 
   it('attaches custom key event handler', () => {
