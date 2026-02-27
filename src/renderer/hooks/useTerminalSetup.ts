@@ -262,9 +262,19 @@ export function useTerminalSetup(
 
     terminal.open(containerRef.current)
 
-    // Load WebGL renderer for better performance; fall back to DOM renderer
-    // if WebGL is unavailable (e.g., E2E tests, low-end GPUs).
-    try { terminal.loadAddon(new WebglAddon()) } catch { /* DOM renderer fallback */ }
+    // Load WebGL renderer for better performance; fall back to canvas renderer
+    // if WebGL2 is unavailable (e.g., E2E tests, low-end GPUs).
+    // Probe for WebGL2 support first — loading the addon on an unsupported GPU
+    // can crash Chromium's GPU process (white screen / sad-face).
+    try {
+      const probeCanvas = document.createElement('canvas')
+      const gl = probeCanvas.getContext('webgl2')
+      if (gl) {
+        const webglAddon = new WebglAddon()
+        webglAddon.onContextLoss(() => { webglAddon.dispose() })
+        terminal.loadAddon(webglAddon)
+      }
+    } catch { /* canvas renderer fallback */ }
 
     // Register all terminals in the buffer registry so content is accessible.
     // Agent terminals are keyed by sessionId; non-agent terminals use the pty ID.

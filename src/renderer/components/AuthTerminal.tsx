@@ -34,7 +34,15 @@ export function AuthTerminal({ ptyId, onDone }: { ptyId: string; onDone: () => v
     const fitAddon = new FitAddon()
     term.loadAddon(fitAddon)
     term.open(containerRef.current)
-    try { term.loadAddon(new WebglAddon()) } catch { /* DOM renderer fallback */ }
+    try {
+      const probeCanvas = document.createElement('canvas')
+      const gl = probeCanvas.getContext('webgl2')
+      if (gl) {
+        const webglAddon = new WebglAddon()
+        webglAddon.onContextLoss(() => { webglAddon.dispose() })
+        term.loadAddon(webglAddon)
+      }
+    } catch { /* canvas renderer fallback */ }
     fitAddon.fit()
 
     // Forward keystrokes to PTY
