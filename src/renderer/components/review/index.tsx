@@ -165,7 +165,8 @@ export default function ReviewPanel({ session, repo, onSelectFile }: ReviewPanel
 
   const {
     handleGenerateReview, handlePushComments, handleDeleteComment, handleOpenPrUrl,
-    handleClickLocation, handleExplainIssue, handleGitignoreAdd, handleGitignoreContinue, handleGitignoreCancel,
+    handleClickLocation, handleExplainIssue, handleAddComment, handleDraftResponsePlan,
+    handleGitignoreAdd, handleGitignoreContinue, handleGitignoreCancel,
   } = useReviewActions(session, repo, onSelectFile, state)
 
   const hasPreReviewContent = !!(prDescription || prGitHubComments.length > 0)
@@ -218,6 +219,15 @@ export default function ReviewPanel({ session, repo, onSelectFile }: ReviewPanel
             </button>
           )}
         </div>
+        {reviewData && session.agentPtyId && (
+          <button
+            onClick={handleDraftResponsePlan}
+            className="w-full mt-1.5 py-1 text-xs rounded border border-border text-text-secondary hover:text-text-primary hover:border-accent transition-colors"
+            title="Ask agent to help draft a response plan for the review findings"
+          >
+            Draft Response Plan
+          </button>
+        )}
         {error && <div className="text-xs text-red-400 mt-1">{error}</div>}
         {pushResult && <div className="text-xs text-green-400 mt-1">{pushResult}</div>}
       </div>
@@ -263,6 +273,7 @@ export default function ReviewPanel({ session, repo, onSelectFile }: ReviewPanel
             onLoadOlderComments={loadOlderComments}
             onClickLocation={handleClickLocation}
             onExplainIssue={handleExplainIssue}
+            onAddComment={handleAddComment}
             onDeleteComment={handleDeleteComment}
             repoDir={session.directory}
             prNumber={session.prNumber || 0}

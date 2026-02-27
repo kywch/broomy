@@ -2,7 +2,7 @@
  * Hook providing action handlers for review generation, comment pushing, gitignore management, and file navigation.
  */
 import { useCallback } from 'react'
-import type { CodeLocation, RequestedChange, ReviewHistory } from '../../types/review'
+import type { CodeLocation, PendingComment, RequestedChange, ReviewHistory } from '../../types/review'
 import type { Session } from '../../store/sessions'
 import type { ManagedRepo } from '../../../preload/index'
 import { buildReviewPrompt, type PrComment } from '../../utils/reviewPromptBuilder'
@@ -65,6 +65,8 @@ export interface ReviewActions {
   handleOpenPrUrl: () => void
   handleClickLocation: (location: CodeLocation) => void
   handleExplainIssue: (issueId: string) => Promise<void>
+  handleAddComment: (file: string, line: number, body: string) => Promise<void>
+  handleDraftResponsePlan: () => Promise<void>
   handleGitignoreAdd: () => Promise<void>
   handleGitignoreContinue: () => Promise<void>
   handleGitignoreCancel: () => void
@@ -304,6 +306,80 @@ Please cover:
     }
   }, [session, state.reviewData, broomyDir, setError])
 
+  const handleAddComment = useCallback(async (file: string, line: number, body: string) => {
+    const newComment: PendingComment = {
+      id: `comment-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`,
+      file,
+      line,
+      body,
+      createdAt: new Date().toISOString(),
+    }
+
+    try {
+      let allComments: PendingComment[] = []
+      try {
+        const exists = await window.fs.exists(commentsFilePath)
+        if (exists) {
+          const data = await window.fs.readFile(commentsFilePath)
+          allComments = JSON.parse(data)
+        }
+      } catch {
+        // Start fresh
+      }
+
+      allComments.push(newComment)
+      await window.fs.mkdir(broomyDir)
+      await window.fs.writeFile(commentsFilePath, JSON.stringify(allComments, null, 2))
+      setComments(allComments)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    }
+  }, [commentsFilePath, broomyDir, setComments, setError])
+
+  const handleDraftResponsePlan = useCallback(async () => {
+    if (!session.agentPtyId) {
+      setError('No agent terminal found. Wait for the agent to start.')
+      return
+    }
+
+    const reviewData = state.reviewData
+    if (!reviewData) return
+
+    const issuesList = reviewData.potentialIssues
+      .map(i => `- [${i.severity}] ${i.title}: ${i.description}`)
+      .join('\n')
+
+    const prompt = `# Draft Response Plan
+
+Based on the code review, please help me create a response plan.
+
+## Review Summary
+**Purpose:** ${reviewData.overview.purpose}
+**Approach:** ${reviewData.overview.approach}
+
+## Issues Found
+${issuesList || 'No issues found.'}
+
+## Instructions
+1. First, ask me clarifying questions about which issues I want to address and how
+2. Once we've discussed the approach, write a response plan to \`.broomy/plan.md\` that includes:
+   - Which issues to fix and the approach for each
+   - Which issues to skip and why
+   - Suggested order of changes
+   - Any risks or considerations
+`
+
+    try {
+      await window.fs.mkdir(broomyDir)
+      const planPromptPath = `${broomyDir}/response-plan-prompt.md`
+      await window.fs.writeFile(planPromptPath, prompt)
+      await window.pty.write(session.agentPtyId, 'Please read and follow the instructions in .broomy/response-plan-prompt.md')
+      focusAgentTerminal()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    }
+  }, [session, state.reviewData, broomyDir, setError])
+
   const handleClickLocation = useCallback((location: CodeLocation) => {
     const fullPath = location.file.startsWith('/')
       ? location.file
@@ -320,6 +396,8 @@ Please cover:
     handleOpenPrUrl,
     handleClickLocation,
     handleExplainIssue,
+    handleAddComment,
+    handleDraftResponsePlan,
     handleGitignoreAdd,
     handleGitignoreContinue,
     handleGitignoreCancel,

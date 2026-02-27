@@ -1,6 +1,7 @@
 /**
  * Renders the structured review body including overview, change patterns, issues, and pending comments.
  */
+import { useState } from 'react'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import type { ReviewData, ReviewComparison, PendingComment, CodeLocation } from '../../types/review'
@@ -106,6 +107,7 @@ export interface ReviewContentProps {
   onLoadOlderComments: () => void
   onClickLocation: (location: CodeLocation) => void
   onExplainIssue?: (issueId: string) => void
+  onAddComment?: (file: string, line: number, body: string) => Promise<void>
   onDeleteComment: (commentId: string) => void
   repoDir: string
   prNumber: number
@@ -125,11 +127,22 @@ export function ReviewContent({
   onLoadOlderComments,
   onClickLocation,
   onExplainIssue,
+  onAddComment,
   onDeleteComment,
   repoDir,
   prNumber,
   onRefreshComments,
 }: ReviewContentProps) {
+  const [commentingItemId, setCommentingItemId] = useState<string | null>(null)
+  const [commentText, setCommentText] = useState('')
+
+  const handleSubmitComment = async (file: string, line: number) => {
+    if (!onAddComment || !commentText.trim()) return
+    await onAddComment(file, line, commentText.trim())
+    setCommentingItemId(null)
+    setCommentText('')
+  }
+
   return (
     <>
       {/* Changes Since Last Review */}
@@ -217,6 +230,18 @@ export function ReviewContent({
                       Explain
                     </button>
                   )}
+                  {onAddComment && issue.locations.length > 0 && (
+                    <button
+                      onClick={() => {
+                        setCommentingItemId(commentingItemId === issue.id ? null : issue.id)
+                        setCommentText('')
+                      }}
+                      className="flex-shrink-0 px-1.5 py-0.5 text-[10px] rounded border border-border text-text-secondary hover:text-text-primary hover:border-accent transition-colors"
+                      title="Add a comment on this issue"
+                    >
+                      Comment
+                    </button>
+                  )}
                 </div>
                 <div className="text-text-secondary mt-0.5 leading-relaxed">{issue.description}</div>
                 {issue.locations.length > 0 && (
@@ -224,6 +249,38 @@ export function ReviewContent({
                     {issue.locations.map((loc, i) => (
                       <LocationLink key={i} location={loc} directory={directory} onClick={() => onClickLocation(loc)} />
                     ))}
+                  </div>
+                )}
+                {commentingItemId === issue.id && issue.locations.length > 0 && (
+                  <div className="mt-2 flex gap-2">
+                    <input
+                      type="text"
+                      value={commentText}
+                      onChange={(e) => setCommentText(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && commentText.trim()) {
+                          void handleSubmitComment(issue.locations[0].file, issue.locations[0].startLine)
+                        } else if (e.key === 'Escape') {
+                          setCommentingItemId(null)
+                        }
+                      }}
+                      placeholder="Type your comment..."
+                      className="flex-1 px-2 py-1 text-xs rounded border border-border bg-bg-primary text-text-primary focus:outline-none focus:border-accent"
+                      autoFocus
+                    />
+                    <button
+                      onClick={() => void handleSubmitComment(issue.locations[0].file, issue.locations[0].startLine)}
+                      disabled={!commentText.trim()}
+                      className="px-2 py-1 text-xs rounded bg-purple-600 text-white hover:bg-purple-500 disabled:opacity-50 transition-colors"
+                    >
+                      Add
+                    </button>
+                    <button
+                      onClick={() => setCommentingItemId(null)}
+                      className="px-2 py-1 text-xs rounded text-text-secondary hover:text-text-primary transition-colors"
+                    >
+                      Cancel
+                    </button>
                   </div>
                 )}
               </div>
