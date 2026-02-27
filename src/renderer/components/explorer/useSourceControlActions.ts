@@ -6,6 +6,7 @@ import { focusAgentTerminal } from '../../utils/focusHelpers'
 import { withGitProgress } from '../../utils/gitOperationProgress'
 import { useSessionStore } from '../../store/sessions'
 import { buildCreatePrPrompt } from '../../utils/prPromptBuilder'
+import { buildMergePrompt } from '../../utils/mergePromptBuilder'
 
 export interface SourceControlActionsProps {
   directory?: string
@@ -131,10 +132,14 @@ function createGitActions(config: GitActionsConfig) {
 
     const broomyDir = `${directory}/.broomy`
     const promptPath = `${broomyDir}/create-pr-prompt.md`
+    const prResultPath = `${broomyDir}/pr-result.json`
     const baseBranch = branchBaseName || 'main'
 
     // Ensure .broomy directory exists
     await window.fs.mkdir(broomyDir)
+
+    // Remove stale pr-result.json so the watcher doesn't trigger on old data
+    await window.fs.rm(prResultPath)
 
     // Write the prompt file
     const prompt = buildCreatePrPrompt(baseBranch)
@@ -184,8 +189,6 @@ export function useSourceControlActions({
     expandedCommits, setExpandedCommits,
     commitFilesByHash, setCommitFilesByHash,
     setLoadingCommitFiles,
-    prStatus, setPrComments,
-    replyText, setReplyText, setIsSubmittingReply,
   } = data
 
   const activeSessionId = useSessionStore((s) => s.activeSessionId)
@@ -220,11 +223,24 @@ export function useSourceControlActions({
   }
 
   const handleResolveConflicts = async () => {
-    if (!agentPtyId) return
-    await window.pty.write(agentPtyId, 'resolve all merge conflicts\r')
+    if (!directory || !agentPtyId) return
+
+    const broomyDir = `${directory}/.broomy`
+    const promptPath = `${broomyDir}/merge-prompt.md`
+    const baseBranch = data.branchBaseName || 'main'
+
+    // Ensure .broomy directory exists
+    await window.fs.mkdir(broomyDir)
+
+    // Write the prompt file
+    const prompt = buildMergePrompt(baseBranch)
+    await window.fs.writeFile(promptPath, prompt)
+
+    // Send instruction to agent
+    await window.pty.write(agentPtyId, 'Please read and follow the instructions in .broomy/merge-prompt.md')
     focusAgentTerminal()
     setAskedAgentToResolve(true)
-    setAgentMergeMessage('Asked agent to resolve merge conflicts. Wait for the agent to finish, then commit the merge.')
+    setAgentMergeMessage('Asked agent to resolve merge conflicts. Wait for the agent to finish.')
   }
 
   const handleRevertFile = async (filePath: string) => {
@@ -332,26 +348,6 @@ export function useSourceControlActions({
     setExpandedCommits(newExpanded)
   }
 
-  const handleReplyToComment = async (commentId: number) => {
-    const text = replyText[commentId]
-    if (!directory || !prStatus || !text?.trim()) return
-    setIsSubmittingReply(commentId)
-    try {
-      const result = await window.gh.replyToComment(directory, prStatus.number, commentId, text)
-      if (result.success) {
-        setReplyText(prev => ({ ...prev, [commentId]: '' }))
-        const comments = await window.gh.prComments(directory, prStatus.number)
-        setPrComments(comments)
-      } else {
-        setGitOpError({ operation: 'Reply', message: result.error || 'Failed to post reply' })
-      }
-    } catch (err) {
-      setGitOpError({ operation: 'Reply', message: String(err) })
-    } finally {
-      setIsSubmittingReply(null)
-    }
-  }
-
   return {
     handleRevertFile,
     handleStage,
@@ -361,7 +357,6 @@ export function useSourceControlActions({
     handleCommitMerge,
     handleResolveConflicts,
     handleToggleCommit,
-    handleReplyToComment,
     ...gitActions,
   }
 }
