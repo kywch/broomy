@@ -19,6 +19,7 @@ function renderContentArea(overrides: Record<string, unknown> = {}) {
     containerRef: createRef<HTMLDivElement>(),
     showSettings: false,
     showFileViewer: false,
+    showAgent: true,
     fileViewerPosition: 'top' as const,
     layoutSizes: {
       explorerWidth: 256,
@@ -143,6 +144,17 @@ describe('LayoutContentArea', () => {
     })
     const contentDiv = container.querySelector('.flex-col')
     expect(contentDiv).toBeTruthy()
+  })
+
+  it('divider wrapper uses flex layout when visible so divider stretches to full height', () => {
+    const { container } = renderContentArea({
+      showFileViewer: true,
+      fileViewerPosition: 'left',
+    })
+    const divider = container.querySelector('.cursor-col-resize')!
+    const wrapper = divider.parentElement!
+    expect(wrapper.className).toContain('flex')
+    expect(wrapper.className).not.toContain('hidden')
   })
 
   it('calls onMouseDown when divider is pressed', () => {

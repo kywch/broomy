@@ -31,6 +31,7 @@ interface LayoutContentAreaProps {
   containerRef: RefObject<HTMLDivElement>
   showSettings: boolean
   showFileViewer: boolean
+  showAgent: boolean
   fileViewerPosition: FileViewerPosition
   layoutSizes: LayoutSizes
   errorMessage?: string | null
@@ -46,6 +47,7 @@ export default function LayoutContentArea({
   containerRef,
   showSettings,
   showFileViewer,
+  showAgent,
   fileViewerPosition,
   layoutSizes,
   errorMessage,
@@ -87,15 +89,15 @@ export default function LayoutContentArea({
         </div>
 
         {/* Draggable divider between file viewer and terminal */}
-        <div className={showFileViewer && fileViewer ? '' : 'hidden'}>
+        <div className={showFileViewer && fileViewer ? 'flex relative z-10' : 'hidden'}>
           <Divider type="fileViewer" direction={fileViewerPosition === 'left' ? 'vertical' : 'horizontal'} draggingDivider={draggingDivider} onMouseDown={onMouseDown} />
         </div>
 
-        {/* Combined terminal area — always visible */}
+        {/* Combined terminal area — hidden when agent panel toggled off */}
         <div
           data-panel-id="terminal"
           tabIndex={-1}
-          className="relative flex-1 min-w-0 min-h-0 bg-bg-primary outline-none"
+          className={`relative flex-1 min-w-0 min-h-0 bg-bg-primary outline-none ${showAgent ? '' : 'hidden'}`}
         >
           <PanelErrorBoundary name="Terminal">
             {terminal}

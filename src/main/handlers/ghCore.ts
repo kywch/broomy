@@ -9,12 +9,22 @@ import { execFile } from 'child_process'
 import { promisify } from 'util'
 import simpleGit from 'simple-git'
 import { buildPrCreateUrl } from '../gitStatusParser'
-import { isWindows, getExecShell } from '../platform'
+import { isWindows, getExecShell, resolveWindowsCommand } from '../platform'
 import { HandlerContext, expandHomePath } from './types'
 import { getScenarioData } from './scenarios'
 import { getDefaultBranch } from './gitUtils'
 
 const execFileAsync = promisify(execFile)
+
+function parseIssuesJson(result: string) {
+  const issues = JSON.parse(result)
+  return issues.map((issue: { number: number; title: string; labels: { name: string }[]; url: string }) => ({
+    number: issue.number,
+    title: issue.title,
+    labels: issue.labels.map((l: { name: string }) => l.name),
+    url: issue.url,
+  }))
+}
 
 async function runCommand(command: string, args: string[], options: { cwd?: string; timeout?: number }): Promise<string> {
   const { stdout } = await execFileAsync(command, args, {
@@ -28,15 +38,21 @@ export function register(ipcMain: IpcMain, ctx: HandlerContext): void {
   // Agent CLI installation check
   ipcMain.handle('agent:isInstalled', async (_event, command: string) => {
     if (ctx.isE2ETest) return true
+    // Extract the base command name (e.g. "claude --flag" → "claude")
+    const baseCommand = command.trim().split(/\s+/)[0]
     try {
       if (isWindows) {
-        await execFileAsync('where', [command], { encoding: 'utf-8' })
+        await execFileAsync('where', [baseCommand], { encoding: 'utf-8' })
       } else {
         const shell = getExecShell() || '/bin/sh'
-        await execFileAsync(shell, ['-c', 'command -v "$1"', '--', command], { encoding: 'utf-8', timeout: 5000 })
+        await execFileAsync(shell, ['-c', 'command -v "$1"', '--', baseCommand], { encoding: 'utf-8', timeout: 5000 })
       }
       return true
     } catch {
+      // On Windows, fall back to well-known install locations
+      if (isWindows) {
+        return resolveWindowsCommand(baseCommand) !== null
+      }
       return false
     }
   })
@@ -77,13 +93,29 @@ export function register(ipcMain: IpcMain, ctx: HandlerContext): void {
         cwd: expandHomePath(repoDir),
         timeout: 30000,
       })
-      const issues = JSON.parse(result)
-      return issues.map((issue: { number: number; title: string; labels: { name: string }[]; url: string }) => ({
-        number: issue.number,
-        title: issue.title,
-        labels: issue.labels.map((l: { name: string }) => l.name),
-        url: issue.url,
-      }))
+      return parseIssuesJson(result)
+    } catch {
+      return []
+    }
+  })
+
+  ipcMain.handle('gh:searchIssues', async (_event, repoDir: string, query: string) => {
+    if (ctx.isE2ETest) {
+      const allIssues = [
+        { number: 42, title: 'Add support for the dark mode toggle in the user settings panel', labels: ['feature', 'priority'], url: 'https://github.com/user/demo-project/issues/42' },
+        { number: 17, title: 'Fix the crash that happens when clicking on an empty notification list', labels: ['bug'], url: 'https://github.com/user/demo-project/issues/17' },
+        { number: 8, title: 'Implement search functionality for the dashboard', labels: ['feature'], url: 'https://github.com/user/demo-project/issues/8' },
+      ]
+      const q = query.toLowerCase()
+      return allIssues.filter(i => i.title.toLowerCase().includes(q) || i.labels.some(l => l.toLowerCase().includes(q)))
+    }
+
+    try {
+      const result = await runCommand('gh', ['issue', 'list', '--search', query, '--state', 'open', '--json', 'number,title,labels,url', '--limit', '50'], {
+        cwd: expandHomePath(repoDir),
+        timeout: 30000,
+      })
+      return parseIssuesJson(result)
     } catch {
       return []
     }

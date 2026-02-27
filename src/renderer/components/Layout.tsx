@@ -31,6 +31,7 @@ interface LayoutProps {
   sidebarWidth: number
   layoutSizes: LayoutSizes
   errorMessage?: string | null
+  topBanner?: ReactNode
   title?: string
   profileChip?: ReactNode
   // Callbacks
@@ -61,6 +62,7 @@ export default function Layout({
   sidebarWidth,
   layoutSizes,
   errorMessage,
+  topBanner,
   title,
   profileChip,
   onSidebarWidthChange,
@@ -104,6 +106,7 @@ export default function Layout({
   const showSidebar = isPanelVisible(PANEL_IDS.SIDEBAR)
   const showExplorer = isPanelVisible(PANEL_IDS.EXPLORER)
   const showFileViewer = isPanelVisible(PANEL_IDS.FILE_VIEWER)
+  const showAgent = isPanelVisible(PANEL_IDS.AGENT)
   const showSettings = isPanelVisible(PANEL_IDS.SETTINGS)
   const showTutorial = isPanelVisible(PANEL_IDS.TUTORIAL)
 
@@ -181,7 +184,7 @@ export default function Layout({
         settingsPanelId={PANEL_IDS.SETTINGS}
       />
 
-      {/* App-level error banner */}
+      {topBanner}
       {appBannerError && <ErrorBanner error={appBannerError} />}
 
       {/* Main content area */}
@@ -240,6 +243,7 @@ export default function Layout({
               containerRef={containerRef}
               showSettings={showSettings}
               showFileViewer={showFileViewer}
+              showAgent={showAgent}
               fileViewerPosition={fileViewerPosition}
               layoutSizes={layoutSizes}
               errorMessage={errorMessage}

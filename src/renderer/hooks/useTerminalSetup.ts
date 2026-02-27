@@ -5,6 +5,7 @@ import { useEffect, useRef, useState, useCallback } from 'react'
 import { Terminal as XTerm } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { SerializeAddon } from '@xterm/addon-serialize'
+import { WebglAddon } from '@xterm/addon-webgl'
 import { useErrorStore } from '../store/errors'
 import { useSessionStore } from '../store/sessions'
 import { useRepoStore } from '../store/repos'
@@ -58,169 +59,47 @@ const XTERM_THEME = {
 
 // ── Viewport helpers factory ─────────────────────────────────────────
 
-interface ViewportHelpers {
+export interface ViewportHelpers {
   isAtBottom: () => boolean
-  forceViewportSync: () => void
-  isViewportDesynced: () => boolean
-  isScrollStuck: (direction: 1 | -1) => boolean
 }
 
-function createViewportHelpers(terminal: XTerm, viewportEl: HTMLElement | null): ViewportHelpers {
+function createViewportHelpers(terminal: XTerm): ViewportHelpers {
   const isAtBottom = () => {
     const buffer = terminal.buffer.active
     return buffer.viewportY >= buffer.baseY - 1
   }
 
-  // Force xterm to recalculate the viewport scroll area.
-  // Works around an xterm.js issue where the DOM scroll area height gets
-  // out of sync with the buffer, making scrollback unreachable.
-  // We toggle terminal.resize() by +/-1 row to force syncScrollArea() --
-  // the intermediate state is never painted because the browser batches
-  // DOM updates within a single JS turn.
-  const forceViewportSync = () => {
-    const { cols, rows } = terminal
-    if (cols > 0 && rows > 1) {
-      terminal.resize(cols, rows + 1)
-      terminal.resize(cols, rows)
-    }
-  }
-
-  // Check if the viewport scroll area is desynced from the buffer.
-  // Returns true if buffer has scrollback content but the DOM viewport
-  // isn't scrollable (scrollHeight ~= clientHeight).
-  const isViewportDesynced = () => {
-    if (!viewportEl) return false
-    return terminal.buffer.active.baseY > 0 &&
-      viewportEl.scrollHeight <= viewportEl.clientHeight + 1
-  }
-
-  // Check if we can scroll further in the given direction but DOM won't move.
-  // direction: 1 = down, -1 = up
-  const isScrollStuck = (direction: 1 | -1): boolean => {
-    if (!viewportEl) return false
-    const buffer = terminal.buffer.active
-    if (direction === 1) {
-      const notAtBufferBottom = buffer.viewportY < buffer.baseY
-      const domAtBottom = viewportEl.scrollTop >= viewportEl.scrollHeight - viewportEl.clientHeight - 1
-      return notAtBufferBottom && domAtBottom
-    } else {
-      const notAtBufferTop = buffer.viewportY > 0
-      const domAtTop = viewportEl.scrollTop <= 1
-      return notAtBufferTop && domAtTop
-    }
-  }
-
-  return { isAtBottom, forceViewportSync, isViewportDesynced, isScrollStuck }
+  return { isAtBottom }
 }
 
 // ── Scroll tracking setup ────────────────────────────────────────────
 
 interface ScrollTrackingState {
   pendingScrollRAF: number
-  stuckScrollCount: number
-  lastStuckSyncTime: number
 }
 
 interface ScrollTrackingResult {
   state: ScrollTrackingState
   updateFollowingFromScroll: (e: Event) => void
   handleKeyScroll: (e: KeyboardEvent) => void
-  logScrollDiag?: (label: string, extra?: Record<string, unknown>) => void
 }
 
 function createScrollTracking(
   terminal: XTerm,
-  viewportEl: HTMLElement | null,
   helpers: ViewportHelpers,
   isFollowingRef: React.MutableRefObject<boolean>,
   setShowScrollButton: React.Dispatch<React.SetStateAction<boolean>>,
 ): ScrollTrackingResult {
-  const state: ScrollTrackingState = { pendingScrollRAF: 0, stuckScrollCount: 0, lastStuckSyncTime: 0 }
+  const state: ScrollTrackingState = { pendingScrollRAF: 0 }
 
-  // ── Scroll jump diagnostic logging ──
-  // Tracks recent scroll positions to detect discontinuous jumps.
-  // A "jump" is when scrollTop moves by more than 3x the recent average delta.
-  let lastScrollTop = -1
-  const recentDeltas: number[] = []
-  const MAX_RECENT = 10
-  const JUMP_THRESHOLD = 3
-
-  const logScrollDiag = (label: string, extra?: Record<string, unknown>) => {
-    if (!viewportEl) return
-    const buf = terminal.buffer.active
-    console.log(`[scroll-diag] ${label}`, JSON.stringify({
-      dom: { scrollTop: viewportEl.scrollTop, scrollHeight: viewportEl.scrollHeight, clientHeight: viewportEl.clientHeight },
-      buffer: { viewportY: buf.viewportY, baseY: buf.baseY, cursorY: buf.cursorY },
-      isFollowing: isFollowingRef.current,
-      ...extra,
-    }))
-  }
-
-  // Track user-initiated scrolls to update following mode.
-  // After a user scroll, check if they ended up at the bottom:
-  //   - At bottom -> re-engage following (auto-scroll on new output)
-  //   - Not at bottom -> disengage following (user is reading scrollback)
   const updateFollowingFromScroll = (e: Event) => {
     // Immediately disengage following on upward scroll gestures.
-    // This MUST happen synchronously -- if we wait for rAF, the onRender
-    // handler would see isFollowing=true and fight the user's scroll.
     if (e instanceof WheelEvent && e.deltaY < 0) {
       isFollowingRef.current = false
       if (state.pendingScrollRAF) {
         cancelAnimationFrame(state.pendingScrollRAF)
         state.pendingScrollRAF = 0
       }
-    }
-
-    // Unified stuck scroll detection for both directions.
-    if (e instanceof WheelEvent) {
-      const direction = e.deltaY > 0 ? 1 : -1
-      const scrollTopBefore = viewportEl?.scrollTop ?? 0
-      const viewportYBefore = terminal.buffer.active.viewportY
-
-      requestAnimationFrame(() => {
-        const scrollTopAfter = viewportEl?.scrollTop ?? 0
-        const viewportYAfter = terminal.buffer.active.viewportY
-        const scrollMoved = Math.abs(scrollTopAfter - scrollTopBefore) > 0.5
-        const bufferMoved = viewportYAfter !== viewportYBefore
-
-        // ── Jump detection ──
-        if (scrollMoved && lastScrollTop >= 0) {
-          const delta = Math.abs(scrollTopAfter - lastScrollTop)
-          if (recentDeltas.length >= 2) {
-            const avg = recentDeltas.reduce((a, b) => a + b, 0) / recentDeltas.length
-            if (avg > 0 && delta > avg * JUMP_THRESHOLD) {
-              logScrollDiag('JUMP DETECTED', {
-                delta, avgDelta: avg, ratio: delta / avg,
-                scrollTopBefore, scrollTopAfter, lastScrollTop,
-                wheelDeltaY: e.deltaY,
-              })
-            }
-          }
-          recentDeltas.push(delta)
-          if (recentDeltas.length > MAX_RECENT) recentDeltas.shift()
-        }
-        lastScrollTop = scrollTopAfter
-
-        if (!scrollMoved && !bufferMoved && helpers.isScrollStuck(direction)) {
-          const now = Date.now()
-          state.stuckScrollCount++
-          logScrollDiag('stuck scroll', { direction, stuckCount: state.stuckScrollCount })
-          if (state.stuckScrollCount >= 2 && now - state.lastStuckSyncTime > 500) {
-            logScrollDiag('forcing viewport sync (stuck)')
-            helpers.forceViewportSync()
-            state.lastStuckSyncTime = now
-            state.stuckScrollCount = 0
-          }
-        } else if (scrollMoved || bufferMoved) {
-          state.stuckScrollCount = 0
-        }
-
-        const atBottom = helpers.isAtBottom()
-        isFollowingRef.current = atBottom
-        setShowScrollButton(!atBottom && terminal.buffer.active.baseY > 0)
-      })
-      return
     }
 
     requestAnimationFrame(() => {
@@ -248,7 +127,7 @@ function createScrollTracking(
     }
   }
 
-  return { state, updateFollowingFromScroll, handleKeyScroll, logScrollDiag }
+  return { state, updateFollowingFromScroll, handleKeyScroll }
 }
 
 // ── Terminal state hook (refs, store wiring, callbacks) ──────────────
@@ -268,6 +147,9 @@ function useTerminalState(config: TerminalConfig) {
   const ptyIdRef = useRef<string | null>(null)
   const isFollowingRef = useRef(true)
   const [showScrollButton, setShowScrollButton] = useState(false)
+
+  const isActiveRef = useRef(true)
+  const dataHandlerRef = useRef<{ flush: () => void } | null>(null)
 
   const commandRef = useRef(command)
   commandRef.current = command
@@ -311,11 +193,8 @@ function useTerminalState(config: TerminalConfig) {
   const scheduleUpdate = useCallback((update: { status?: 'working' | 'idle' | 'error'; lastMessage?: string }) => {
     pendingUpdateRef.current = { ...pendingUpdateRef.current, ...update }
     if (updateTimeoutRef.current) clearTimeout(updateTimeoutRef.current)
-    if (update.status === 'working') {
-      flushUpdate()
-    } else {
-      updateTimeoutRef.current = setTimeout(flushUpdate, 300)
-    }
+    const delay = update.status === 'working' ? 150 : 300
+    updateTimeoutRef.current = setTimeout(flushUpdate, delay)
   }, [flushUpdate])
 
   const handleScrollToBottom = useCallback(() => {
@@ -328,6 +207,7 @@ function useTerminalState(config: TerminalConfig) {
     terminalRef, fitAddonRef, serializeAddonRef, cleanupRef,
     updateTimeoutRef, idleTimeoutRef, lastStatusRef,
     lastUserInputRef, lastInteractionRef, ptyIdRef, isFollowingRef,
+    isActiveRef, dataHandlerRef,
     showScrollButton, setShowScrollButton,
     commandRef, envRef, isAgentTerminalRef, cwdRef,
     addErrorRef, updateAgentMonitorRef, markSessionReadRef,
@@ -382,19 +262,30 @@ export function useTerminalSetup(
 
     terminal.open(containerRef.current)
 
-    if (isAgent && sessionId) {
-      terminalBufferRegistry.register(sessionId, () => {
-        try { return serializeAddon.serialize() } catch { return '' }
-      })
-    }
+    // Load WebGL renderer for better performance; fall back to DOM renderer
+    // if WebGL is unavailable (e.g., E2E tests, low-end GPUs).
+    try { terminal.loadAddon(new WebglAddon()) } catch { /* DOM renderer fallback */ }
 
-    const viewportEl = containerRef.current.querySelector<HTMLElement>('.xterm-viewport')
-    const helpers = createViewportHelpers(terminal, viewportEl)
-    const scrollTracking = createScrollTracking(terminal, viewportEl, helpers, s.isFollowingRef, s.setShowScrollButton)
+    // Register all terminals in the buffer registry so content is accessible.
+    // Agent terminals are keyed by sessionId; non-agent terminals use the pty ID.
+    const registryKey = isAgent ? sessionId : `${sessionId}-user`
+    terminalBufferRegistry.register(registryKey, () => {
+      try { return serializeAddon.serialize() } catch { return '' }
+    })
 
+    const helpers = createViewportHelpers(terminal)
+    const scrollTracking = createScrollTracking(terminal, helpers, s.isFollowingRef, s.setShowScrollButton)
+
+    let onRenderRAF = 0
     terminal.onRender(() => {
-      const atBottom = helpers.isAtBottom()
-      s.setShowScrollButton(!atBottom && terminal.buffer.active.baseY > 0)
+      if (!s.isActiveRef.current) return // skip render work for background terminals
+      if (onRenderRAF) return
+      onRenderRAF = requestAnimationFrame(() => {
+        onRenderRAF = 0
+        const atBottom = helpers.isAtBottom()
+        const shouldShow = !atBottom && terminal.buffer.active.baseY > 0
+        s.setShowScrollButton(prev => prev === shouldShow ? prev : shouldShow)
+      })
     })
 
     containerRef.current.addEventListener('wheel', scrollTracking.updateFollowingFromScroll, { passive: true })
@@ -427,13 +318,12 @@ export function useTerminalSetup(
 
         const dataHandler = createPtyDataHandler({
           terminal,
-          viewportEl,
-          helpers,
-          scrollTracking,
           isAgent,
           state: s,
           effectStartTime,
+          isActiveRef: s.isActiveRef,
         })
+        s.dataHandlerRef.current = dataHandler
         const removeDataListener = window.pty.onData(id, dataHandler.handleData)
 
         const removeExitListener = window.pty.onExit(id, (exitCode: number) => {
@@ -460,12 +350,6 @@ export function useTerminalSetup(
       try { fitAddon.fit() } catch { /* ignore */ }
       if (s.isFollowingRef.current) {
         terminal.scrollToBottom()
-        if (!helpers.isAtBottom()) {
-          scrollTracking.state.pendingScrollRAF = requestAnimationFrame(() => {
-            scrollTracking.state.pendingScrollRAF = 0
-            if (s.isFollowingRef.current) terminal.scrollToBottom()
-          })
-        }
       }
       if (ptyResizeTimeout) clearTimeout(ptyResizeTimeout)
       ptyResizeTimeout = setTimeout(() => {
@@ -484,6 +368,7 @@ export function useTerminalSetup(
       resizeObserver.disconnect()
       if (ptyResizeTimeout) clearTimeout(ptyResizeTimeout)
       if (scrollTracking.state.pendingScrollRAF) cancelAnimationFrame(scrollTracking.state.pendingScrollRAF)
+      if (onRenderRAF) cancelAnimationFrame(onRenderRAF)
       s.cleanupRef.current?.()
       if (s.ptyIdRef.current) { void window.pty.kill(s.ptyIdRef.current); s.ptyIdRef.current = null }
       terminal.dispose()
@@ -492,14 +377,17 @@ export function useTerminalSetup(
       if (isAgent && s.sessionIdRef.current && s.lastStatusRef.current === 'working') {
         s.updateAgentMonitorRef.current(s.sessionIdRef.current, { status: 'idle' })
       }
-      if (isAgent && sessionId) terminalBufferRegistry.unregister(sessionId)
+      terminalBufferRegistry.unregister(registryKey)
     }
   }, [sessionId, restartKey]) // Recreate terminal when session identity changes or on restart
 
-  // Fit and focus when terminal becomes visible (e.g., tab switch or session selection)
+  // Fit, focus, and flush buffered data when terminal becomes visible
   useEffect(() => {
+    s.isActiveRef.current = isActive
     s.lastInteractionRef.current = Date.now()
     if (isActive) {
+      // Replay any data that arrived while the terminal was in the background
+      s.dataHandlerRef.current?.flush()
       requestAnimationFrame(() => {
         try { s.fitAddonRef.current?.fit() } catch { /* ignore */ }
         s.terminalRef.current?.focus()

@@ -51,13 +51,6 @@ function makeData(overrides: Partial<SourceControlData> = {}): SourceControlData
     isPushingToMain: false,
     setIsPushingToMain: vi.fn(),
     currentHeadCommit: null,
-    prComments: [],
-    setPrComments: vi.fn(),
-    isCommentsLoading: false,
-    replyText: {},
-    setReplyText: vi.fn(),
-    isSubmittingReply: null,
-    setIsSubmittingReply: vi.fn(),
     hasChangesSincePush: true,
     resetPr: vi.fn(),
     currentRepo: undefined,
@@ -396,78 +389,6 @@ describe('useSourceControlActions', () => {
     })
   })
 
-  describe('handleReplyToComment', () => {
-    it('posts a reply and refreshes comments', async () => {
-      vi.mocked(window.gh.replyToComment).mockResolvedValue({ success: true })
-      vi.mocked(window.gh.prComments).mockResolvedValue([])
-      const data = makeData({
-        prStatus: { number: 42, title: 'Test', state: 'OPEN' as const, url: 'https://example.com', headRefName: 'feature', baseRefName: 'main' },
-        replyText: { 1: 'My reply' },
-      })
-
-      const { result } = renderHook(() =>
-        useSourceControlActions({ directory: '/repos/project', data })
-      )
-
-      await act(async () => {
-        await result.current.handleReplyToComment(1)
-      })
-
-      expect(window.gh.replyToComment).toHaveBeenCalledWith('/repos/project', 42, 1, 'My reply')
-      expect(data.setReplyText).toHaveBeenCalled()
-    })
-
-    it('shows error when reply fails with error result', async () => {
-      vi.mocked(window.gh.replyToComment).mockResolvedValue({ success: false, error: 'forbidden' })
-      const data = makeData({
-        prStatus: { number: 42, title: 'Test', state: 'OPEN' as const, url: 'https://example.com', headRefName: 'feature', baseRefName: 'main' },
-        replyText: { 1: 'My reply' },
-      })
-
-      const { result } = renderHook(() =>
-        useSourceControlActions({ directory: '/repos/project', data })
-      )
-
-      await act(async () => {
-        await result.current.handleReplyToComment(1)
-      })
-
-      expect(data.setGitOpError).toHaveBeenCalledWith({ operation: 'Reply', message: 'forbidden' })
-    })
-
-    it('shows error when reply throws', async () => {
-      vi.mocked(window.gh.replyToComment).mockRejectedValue(new Error('network error'))
-      const data = makeData({
-        prStatus: { number: 42, title: 'Test', state: 'OPEN' as const, url: 'https://example.com', headRefName: 'feature', baseRefName: 'main' },
-        replyText: { 1: 'My reply' },
-      })
-
-      const { result } = renderHook(() =>
-        useSourceControlActions({ directory: '/repos/project', data })
-      )
-
-      await act(async () => {
-        await result.current.handleReplyToComment(1)
-      })
-
-      expect(data.setGitOpError).toHaveBeenCalledWith({ operation: 'Reply', message: 'Error: network error' })
-    })
-
-    it('does nothing without PR status', async () => {
-      const data = makeData({ prStatus: null, replyText: { 1: 'My reply' } })
-
-      const { result } = renderHook(() =>
-        useSourceControlActions({ directory: '/repos/project', data })
-      )
-
-      await act(async () => {
-        await result.current.handleReplyToComment(1)
-      })
-
-      expect(window.gh.replyToComment).not.toHaveBeenCalled()
-    })
-  })
-
   describe('handleCommitMerge', () => {
     it('stages all files then commits merge successfully', async () => {
       vi.mocked(window.git.commitMerge).mockResolvedValue({ success: true })
@@ -554,7 +475,7 @@ describe('useSourceControlActions', () => {
   })
 
   describe('handleResolveConflicts', () => {
-    it('writes to agent PTY and sets askedAgentToResolve', async () => {
+    it('writes prompt file and sends instruction to agent PTY', async () => {
       const data = makeData()
       const { result } = renderHook(() =>
         useSourceControlActions({ directory: '/repos/project', agentPtyId: 'pty-123', data })
@@ -564,10 +485,34 @@ describe('useSourceControlActions', () => {
         await result.current.handleResolveConflicts()
       })
 
-      expect(window.pty.write).toHaveBeenCalledWith('pty-123', 'resolve all merge conflicts\r')
+      expect(window.fs.mkdir).toHaveBeenCalledWith('/repos/project/.broomy')
+      expect(window.fs.writeFile).toHaveBeenCalledWith(
+        '/repos/project/.broomy/merge-prompt.md',
+        expect.stringContaining('# Resolve Merge Conflicts')
+      )
+      expect(window.pty.write).toHaveBeenCalledWith(
+        'pty-123',
+        'Please read and follow the instructions in .broomy/merge-prompt.md'
+      )
       expect(data.setAskedAgentToResolve).toHaveBeenCalledWith(true)
       expect(data.setAgentMergeMessage).toHaveBeenCalledWith(
-        'Asked agent to resolve merge conflicts. Wait for the agent to finish, then commit the merge.'
+        'Asked agent to resolve merge conflicts. Wait for the agent to finish.'
+      )
+    })
+
+    it('uses branchBaseName in prompt', async () => {
+      const data = makeData({ branchBaseName: 'develop' })
+      const { result } = renderHook(() =>
+        useSourceControlActions({ directory: '/repos/project', agentPtyId: 'pty-123', data })
+      )
+
+      await act(async () => {
+        await result.current.handleResolveConflicts()
+      })
+
+      expect(window.fs.writeFile).toHaveBeenCalledWith(
+        '/repos/project/.broomy/merge-prompt.md',
+        expect.stringContaining('develop')
       )
     })
 
@@ -583,6 +528,20 @@ describe('useSourceControlActions', () => {
 
       expect(window.pty.write).not.toHaveBeenCalled()
       expect(data.setAskedAgentToResolve).not.toHaveBeenCalled()
+    })
+
+    it('does nothing when no directory', async () => {
+      const data = makeData()
+      const { result } = renderHook(() =>
+        useSourceControlActions({ agentPtyId: 'pty-123', data })
+      )
+
+      await act(async () => {
+        await result.current.handleResolveConflicts()
+      })
+
+      expect(window.fs.mkdir).not.toHaveBeenCalled()
+      expect(window.pty.write).not.toHaveBeenCalled()
     })
   })
 

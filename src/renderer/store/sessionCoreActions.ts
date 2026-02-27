@@ -28,12 +28,14 @@ const DEFAULT_LAYOUT_SIZES = {
 const DEFAULT_PANEL_VISIBILITY: PanelVisibility = {
   [PANEL_IDS.EXPLORER]: true,
   [PANEL_IDS.FILE_VIEWER]: false,
+  [PANEL_IDS.AGENT]: true,
 }
 
 // Panel visibility for review sessions
 const REVIEW_PANEL_VISIBILITY: PanelVisibility = {
   [PANEL_IDS.EXPLORER]: true,
   [PANEL_IDS.FILE_VIEWER]: false,
+  [PANEL_IDS.AGENT]: true,
 }
 
 // Default terminal tabs - starts with one user tab, agent tab selected by default (null → agent)
@@ -305,12 +307,16 @@ export function createCoreActions(get: StoreGet, set: StoreSet) {
 
     refreshAllBranches: async () => {
       const { sessions } = get()
-      for (const session of sessions) {
-        const branch = await window.git.getBranch(session.directory)
-        if (branch !== session.branch) {
-          updateSessionBranch(session.id, branch)
+      await Promise.all(sessions.map(async (session) => {
+        try {
+          const branch = await window.git.getBranch(session.directory)
+          if (branch !== session.branch) {
+            updateSessionBranch(session.id, branch)
+          }
+        } catch {
+          // Ignore errors for individual sessions (e.g. deleted directories)
         }
-      }
+      }))
     },
   }
 }
