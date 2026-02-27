@@ -66,7 +66,7 @@ export interface ViewportHelpers {
 function createViewportHelpers(terminal: XTerm): ViewportHelpers {
   const isAtBottom = () => {
     const buffer = terminal.buffer.active
-    return buffer.viewportY >= buffer.baseY - 1
+    return buffer.viewportY >= buffer.baseY
   }
 
   return { isAtBottom }
@@ -94,7 +94,8 @@ function createScrollTracking(
 
   const updateFollowingFromScroll = (e: Event) => {
     // Immediately disengage following on upward scroll gestures.
-    if (e instanceof WheelEvent && e.deltaY < 0) {
+    const isScrollUp = e instanceof WheelEvent && e.deltaY < 0
+    if (isScrollUp) {
       isFollowingRef.current = false
       if (state.pendingScrollRAF) {
         cancelAnimationFrame(state.pendingScrollRAF)
@@ -104,7 +105,12 @@ function createScrollTracking(
 
     requestAnimationFrame(() => {
       const atBottom = helpers.isAtBottom()
-      isFollowingRef.current = atBottom
+      // Only re-engage following on downward scroll that reaches bottom.
+      // Don't override the explicit upward-scroll disengage — the rAF may
+      // fire before the viewport has actually moved, falsely reading "at bottom".
+      if (!isScrollUp) {
+        isFollowingRef.current = atBottom
+      }
       setShowScrollButton(!atBottom && terminal.buffer.active.baseY > 0)
     })
   }
