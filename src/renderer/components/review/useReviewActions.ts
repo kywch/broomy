@@ -58,6 +58,86 @@ async function fetchReviewContext(
   return { previousRequestedChanges, previousHeadCommit, prComments, prDescription }
 }
 
+async function sendAgentPrompt(
+  agentPtyId: string,
+  broomyDir: string,
+  fileName: string,
+  prompt: string,
+): Promise<void> {
+  await window.fs.mkdir(broomyDir)
+  await window.fs.writeFile(`${broomyDir}/${fileName}`, prompt)
+  await window.pty.write(agentPtyId, `Please read and follow the instructions in .broomy/${fileName}`)
+  focusAgentTerminal()
+}
+
+function buildExplainPrompt(issue: { title: string; severity: string; description: string; locations: { file: string; startLine: number; endLine?: number }[] }): string {
+  const locations = issue.locations.map(loc => `- ${loc.file}:${loc.startLine}${loc.endLine ? `-${loc.endLine}` : ''}`).join('\n')
+  return `# Explain Review Issue
+
+Please explain this potential issue from the code review in detail:
+
+**Title:** ${issue.title}
+**Severity:** ${issue.severity}
+**Description:** ${issue.description}
+${locations ? `\n**Locations:**\n${locations}` : ''}
+
+Please cover:
+1. Why this is flagged as a potential problem
+2. What concrete risk or impact it could have
+3. How to address it if it is indeed an issue
+4. Whether this might actually be a false positive and why
+`
+}
+
+function buildResponsePlanPrompt(reviewData: { overview: { purpose: string; approach: string }; potentialIssues: { severity: string; title: string; description: string }[] }): string {
+  const issuesList = reviewData.potentialIssues
+    .map(i => `- [${i.severity}] ${i.title}: ${i.description}`)
+    .join('\n')
+  return `# Draft Response Plan
+
+Based on the code review, please help me create a response plan.
+
+## Review Summary
+**Purpose:** ${reviewData.overview.purpose}
+**Approach:** ${reviewData.overview.approach}
+
+## Issues Found
+${issuesList || 'No issues found.'}
+
+## Instructions
+1. First, ask me clarifying questions about which issues I want to address and how
+2. Once we've discussed the approach, write a response plan to \`.broomy/plan.md\` that includes:
+   - Which issues to fix and the approach for each
+   - Which issues to skip and why
+   - Suggested order of changes
+   - Any risks or considerations
+`
+}
+
+async function checkGitignore(directory: string): Promise<boolean> {
+  try {
+    const gitignorePath = `${directory}/.gitignore`
+    const exists = await window.fs.exists(gitignorePath)
+    if (!exists) return false
+
+    const content = await window.fs.readFile(gitignorePath)
+    const lines = content.split(/\r?\n/).map((l: string) => l.trim())
+    return lines.some((line: string) => line === '.broomy' || line === '.broomy/' || line === '/.broomy' || line === '/.broomy/')
+  } catch {
+    return false
+  }
+}
+
+async function addToGitignore(directory: string): Promise<void> {
+  const gitignorePath = `${directory}/.gitignore`
+  const exists = await window.fs.exists(gitignorePath)
+  if (exists) {
+    await window.fs.appendFile(gitignorePath, '\n# Broomy review data\n.broomy/\n')
+  } else {
+    await window.fs.writeFile(gitignorePath, '# Broomy review data\n.broomy/\n')
+  }
+}
+
 export interface ReviewActions {
   handleGenerateReview: () => Promise<void>
   handlePushComments: () => Promise<void>
@@ -79,51 +159,10 @@ export function useReviewActions(
   state: ReviewDataState,
 ): ReviewActions {
   const {
-    comments,
-    mergeBase,
-    broomyDir,
-    commentsFilePath,
-    historyFilePath,
-    promptFilePath,
-    setFetching,
-    setWaitingForAgent,
-    setFetchingStatus,
-    setPushing,
-    setPushResult,
-    setError,
-    setShowGitignoreModal,
-    setPendingGenerate,
-    setComments,
+    comments, mergeBase, broomyDir, commentsFilePath, historyFilePath, promptFilePath,
+    setFetching, setWaitingForAgent, setFetchingStatus,
+    setPushing, setPushResult, setError, setShowGitignoreModal, setPendingGenerate, setComments,
   } = state
-
-  const checkGitignore = async (): Promise<boolean> => {
-    try {
-      const gitignorePath = `${session.directory}/.gitignore`
-      const exists = await window.fs.exists(gitignorePath)
-      if (!exists) return false
-
-      const content = await window.fs.readFile(gitignorePath)
-      const lines = content.split(/\r?\n/).map((l: string) => l.trim())
-      return lines.some((line: string) => line === '.broomy' || line === '.broomy/' || line === '/.broomy' || line === '/.broomy/')
-    } catch {
-      return false
-    }
-  }
-
-  const addToGitignore = async () => {
-    try {
-      const gitignorePath = `${session.directory}/.gitignore`
-      const exists = await window.fs.exists(gitignorePath)
-
-      if (exists) {
-        await window.fs.appendFile(gitignorePath, '\n# Broomy review data\n.broomy/\n')
-      } else {
-        await window.fs.writeFile(gitignorePath, '# Broomy review data\n.broomy/\n')
-      }
-    } catch (err) {
-      setError(`Failed to update .gitignore: ${err instanceof Error ? err.message : String(err)}`)
-    }
-  }
 
   const proceedWithGeneration = async () => {
     setShowGitignoreModal(false)
@@ -187,7 +226,7 @@ export function useReviewActions(
     }
 
     // Check gitignore first
-    const inGitignore = await checkGitignore()
+    const inGitignore = await checkGitignore(session.directory)
     if (!inGitignore) {
       setPendingGenerate(true)
       setShowGitignoreModal(true)
@@ -198,7 +237,12 @@ export function useReviewActions(
   }, [session])
 
   const handleGitignoreAdd = async () => {
-    await addToGitignore()
+    try {
+      await addToGitignore(session.directory)
+    } catch (err) {
+      setError(`Failed to update .gitignore: ${err instanceof Error ? err.message : String(err)}`)
+      return
+    }
     await proceedWithGeneration()
   }
 
@@ -273,34 +317,10 @@ export function useReviewActions(
       setError('No agent terminal found. Wait for the agent to start.')
       return
     }
-
     const issue = state.reviewData?.potentialIssues.find(i => i.id === issueId)
     if (!issue) return
-
-    const locations = issue.locations.map(loc => `- ${loc.file}:${loc.startLine}${loc.endLine ? `-${loc.endLine}` : ''}`).join('\n')
-
-    const prompt = `# Explain Review Issue
-
-Please explain this potential issue from the code review in detail:
-
-**Title:** ${issue.title}
-**Severity:** ${issue.severity}
-**Description:** ${issue.description}
-${locations ? `\n**Locations:**\n${locations}` : ''}
-
-Please cover:
-1. Why this is flagged as a potential problem
-2. What concrete risk or impact it could have
-3. How to address it if it is indeed an issue
-4. Whether this might actually be a false positive and why
-`
-
     try {
-      await window.fs.mkdir(broomyDir)
-      const explainPath = `${broomyDir}/explain-prompt.md`
-      await window.fs.writeFile(explainPath, prompt)
-      await window.pty.write(session.agentPtyId, 'Please read and follow the instructions in .broomy/explain-prompt.md')
-      focusAgentTerminal()
+      await sendAgentPrompt(session.agentPtyId, broomyDir, 'explain-prompt.md', buildExplainPrompt(issue))
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     }
@@ -341,40 +361,9 @@ Please cover:
       setError('No agent terminal found. Wait for the agent to start.')
       return
     }
-
-    const reviewData = state.reviewData
-    if (!reviewData) return
-
-    const issuesList = reviewData.potentialIssues
-      .map(i => `- [${i.severity}] ${i.title}: ${i.description}`)
-      .join('\n')
-
-    const prompt = `# Draft Response Plan
-
-Based on the code review, please help me create a response plan.
-
-## Review Summary
-**Purpose:** ${reviewData.overview.purpose}
-**Approach:** ${reviewData.overview.approach}
-
-## Issues Found
-${issuesList || 'No issues found.'}
-
-## Instructions
-1. First, ask me clarifying questions about which issues I want to address and how
-2. Once we've discussed the approach, write a response plan to \`.broomy/plan.md\` that includes:
-   - Which issues to fix and the approach for each
-   - Which issues to skip and why
-   - Suggested order of changes
-   - Any risks or considerations
-`
-
+    if (!state.reviewData) return
     try {
-      await window.fs.mkdir(broomyDir)
-      const planPromptPath = `${broomyDir}/response-plan-prompt.md`
-      await window.fs.writeFile(planPromptPath, prompt)
-      await window.pty.write(session.agentPtyId, 'Please read and follow the instructions in .broomy/response-plan-prompt.md')
-      focusAgentTerminal()
+      await sendAgentPrompt(session.agentPtyId, broomyDir, 'response-plan-prompt.md', buildResponsePlanPrompt(state.reviewData))
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     }

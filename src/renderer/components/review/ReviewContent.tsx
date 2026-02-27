@@ -94,6 +94,39 @@ function SinceLastReviewSection({ data }: { data: NonNullable<ReviewData['change
   )
 }
 
+function InlineCommentForm({ onSubmit, onCancel }: { onSubmit: (text: string) => void; onCancel: () => void }) {
+  const [text, setText] = useState('')
+  return (
+    <div className="mt-2 flex gap-2">
+      <input
+        type="text"
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' && text.trim()) onSubmit(text.trim())
+          else if (e.key === 'Escape') onCancel()
+        }}
+        placeholder="Type your comment..."
+        className="flex-1 px-2 py-1 text-xs rounded border border-border bg-bg-primary text-text-primary focus:outline-none focus:border-accent"
+        autoFocus
+      />
+      <button
+        onClick={() => text.trim() && onSubmit(text.trim())}
+        disabled={!text.trim()}
+        className="px-2 py-1 text-xs rounded bg-purple-600 text-white hover:bg-purple-500 disabled:opacity-50 transition-colors"
+      >
+        Add
+      </button>
+      <button
+        onClick={onCancel}
+        className="px-2 py-1 text-xs rounded text-text-secondary hover:text-text-primary transition-colors"
+      >
+        Cancel
+      </button>
+    </div>
+  )
+}
+
 export interface ReviewContentProps {
   reviewData: ReviewData
   comparison: ReviewComparison | null
@@ -114,34 +147,14 @@ export interface ReviewContentProps {
   onRefreshComments: () => void
 }
 
-export function ReviewContent({
-  reviewData,
-  comparison,
-  comments,
-  unpushedCount,
-  directory,
-  prDescription,
-  prGitHubComments,
-  prCommentsLoading,
-  prCommentsHasMore,
-  onLoadOlderComments,
-  onClickLocation,
-  onExplainIssue,
-  onAddComment,
-  onDeleteComment,
-  repoDir,
-  prNumber,
-  onRefreshComments,
-}: ReviewContentProps) {
+export function ReviewContent(props: ReviewContentProps) {
+  const {
+    reviewData, comparison, comments, unpushedCount, directory,
+    prDescription, prGitHubComments, prCommentsLoading, prCommentsHasMore,
+    onLoadOlderComments, onClickLocation, onExplainIssue, onAddComment,
+    onDeleteComment, repoDir, prNumber, onRefreshComments,
+  } = props
   const [commentingItemId, setCommentingItemId] = useState<string | null>(null)
-  const [commentText, setCommentText] = useState('')
-
-  const handleSubmitComment = async (file: string, line: number) => {
-    if (!onAddComment || !commentText.trim()) return
-    await onAddComment(file, line, commentText.trim())
-    setCommentingItemId(null)
-    setCommentText('')
-  }
 
   return (
     <>
@@ -232,10 +245,7 @@ export function ReviewContent({
                   )}
                   {onAddComment && issue.locations.length > 0 && (
                     <button
-                      onClick={() => {
-                        setCommentingItemId(commentingItemId === issue.id ? null : issue.id)
-                        setCommentText('')
-                      }}
+                      onClick={() => setCommentingItemId(commentingItemId === issue.id ? null : issue.id)}
                       className="flex-shrink-0 px-1.5 py-0.5 text-[10px] rounded border border-border text-text-secondary hover:text-text-primary hover:border-accent transition-colors"
                       title="Add a comment on this issue"
                     >
@@ -252,36 +262,13 @@ export function ReviewContent({
                   </div>
                 )}
                 {commentingItemId === issue.id && issue.locations.length > 0 && (
-                  <div className="mt-2 flex gap-2">
-                    <input
-                      type="text"
-                      value={commentText}
-                      onChange={(e) => setCommentText(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' && commentText.trim()) {
-                          void handleSubmitComment(issue.locations[0].file, issue.locations[0].startLine)
-                        } else if (e.key === 'Escape') {
-                          setCommentingItemId(null)
-                        }
-                      }}
-                      placeholder="Type your comment..."
-                      className="flex-1 px-2 py-1 text-xs rounded border border-border bg-bg-primary text-text-primary focus:outline-none focus:border-accent"
-                      autoFocus
-                    />
-                    <button
-                      onClick={() => void handleSubmitComment(issue.locations[0].file, issue.locations[0].startLine)}
-                      disabled={!commentText.trim()}
-                      className="px-2 py-1 text-xs rounded bg-purple-600 text-white hover:bg-purple-500 disabled:opacity-50 transition-colors"
-                    >
-                      Add
-                    </button>
-                    <button
-                      onClick={() => setCommentingItemId(null)}
-                      className="px-2 py-1 text-xs rounded text-text-secondary hover:text-text-primary transition-colors"
-                    >
-                      Cancel
-                    </button>
-                  </div>
+                  <InlineCommentForm
+                    onSubmit={(text) => {
+                      void onAddComment?.(issue.locations[0].file, issue.locations[0].startLine, text)
+                      setCommentingItemId(null)
+                    }}
+                    onCancel={() => setCommentingItemId(null)}
+                  />
                 )}
               </div>
             ))}

@@ -122,7 +122,7 @@ export default function MonacoDiffViewer({
       modifiedEditor.updateOptions({ glyphMargin: true })
       modifiedEditor.onMouseDown((e) => {
         if (e.target.type === monacoEditor.editor.MouseTargetType.GUTTER_GLYPH_MARGIN) {
-          const lineNumber = e.target.position?.lineNumber
+          const lineNumber = e.target.position.lineNumber
           if (lineNumber) {
             setCommentLine(lineNumber)
           }

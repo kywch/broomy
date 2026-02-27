@@ -125,7 +125,8 @@ test.describe.serial('Feature: Review Live Updates & Navigation', () => {
       await locationLink.click()
 
       // Wait for the file viewer to open
-      await page.waitForTimeout(1000)
+      // Wait for the file viewer to render
+      await expect(page.locator('[data-panel-id="fileViewer"]')).toBeVisible({ timeout: 5000 })
 
       // Screenshot the whole window to show the diff viewer
       await page.screenshot({

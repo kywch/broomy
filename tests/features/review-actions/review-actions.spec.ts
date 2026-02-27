@@ -126,8 +126,8 @@ test.describe.serial('Feature: Review Panel Actions', () => {
     await explainBtn.click()
 
     // The agent terminal should be focused (tab switches to agent)
-    // Wait a moment for the UI to update
-    await page.waitForTimeout(500)
+    // Wait for the terminal tab to switch
+    await expect(page.locator('[data-panel-id="terminal"]')).toBeVisible({ timeout: 3000 })
 
     const explorer = page.locator('[data-panel-id="explorer"]')
     await screenshotElement(page, explorer, path.join(SCREENSHOTS, '02-explain-clicked.png'), {

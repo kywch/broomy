@@ -103,7 +103,8 @@ test.describe.serial('Feature: File Viewer Review Comments', () => {
     if (await locationLink.isVisible()) {
       await scrollToVisible(locationLink)
       await locationLink.click()
-      await page.waitForTimeout(1500)
+      // Wait for the file viewer to render
+      await expect(page.locator('[data-panel-id="fileViewer"]')).toBeVisible({ timeout: 5000 })
     }
 
     await page.screenshot({
@@ -154,7 +155,8 @@ test.describe.serial('Feature: File Viewer Review Comments', () => {
     if (await locationLink.isVisible()) {
       await scrollToVisible(locationLink)
       await locationLink.click()
-      await page.waitForTimeout(1500)
+      // Wait for the file viewer to render
+      await expect(page.locator('[data-panel-id="fileViewer"]')).toBeVisible({ timeout: 5000 })
     }
 
     // The diff viewer should be visible with glyph margin
