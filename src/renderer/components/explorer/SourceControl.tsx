@@ -9,7 +9,6 @@ import { useSourceControlData } from './useSourceControlData'
 import { useSourceControlActions } from './useSourceControlActions'
 import { SCViewToggle } from './SCViewToggle'
 import { SCPrBanner } from './SCPrBanner'
-import { SCCommentsView } from './SCCommentsView'
 import { SCCommitsView } from './SCCommitsView'
 import { SCBranchView } from './SCBranchView'
 import { SCWorkingView } from './SCWorkingView'
@@ -53,7 +52,7 @@ export function SourceControl({
   onClearPushToMain,
   onOpenReview,
 }: SourceControlProps) {
-  const [scView, setScView] = useState<'working' | 'branch' | 'commits' | 'comments'>('working')
+  const [scView, setScView] = useState<'working' | 'branch' | 'commits'>('working')
 
   // Reset view when directory (session) changes
   useEffect(() => {
@@ -73,7 +72,7 @@ export function SourceControl({
   if (!directory) return null
 
   const viewToggle = (
-    <SCViewToggle scView={scView} setScView={setScView} prStatus={data.prStatus} />
+    <SCViewToggle scView={scView} setScView={setScView} />
   )
 
   const banners = (
@@ -95,25 +94,6 @@ export function SourceControl({
       issueUrl={issueUrl}
     />
   )
-
-  if (scView === 'comments') {
-    return (
-      <div className="flex flex-col h-full">
-        {viewToggle}
-        {banners}
-        <SCCommentsView
-          directory={directory}
-          prComments={data.prComments}
-          isCommentsLoading={data.isCommentsLoading}
-          replyText={data.replyText}
-          setReplyText={data.setReplyText}
-          isSubmittingReply={data.isSubmittingReply}
-          onReplyToComment={actions.handleReplyToComment}
-          onFileSelect={onFileSelect}
-        />
-      </div>
-    )
-  }
 
   if (scView === 'commits') {
     return (

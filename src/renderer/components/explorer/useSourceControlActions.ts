@@ -184,8 +184,6 @@ export function useSourceControlActions({
     expandedCommits, setExpandedCommits,
     commitFilesByHash, setCommitFilesByHash,
     setLoadingCommitFiles,
-    prStatus, setPrComments,
-    replyText, setReplyText, setIsSubmittingReply,
   } = data
 
   const activeSessionId = useSessionStore((s) => s.activeSessionId)
@@ -332,26 +330,6 @@ export function useSourceControlActions({
     setExpandedCommits(newExpanded)
   }
 
-  const handleReplyToComment = async (commentId: number) => {
-    const text = replyText[commentId]
-    if (!directory || !prStatus || !text?.trim()) return
-    setIsSubmittingReply(commentId)
-    try {
-      const result = await window.gh.replyToComment(directory, prStatus.number, commentId, text)
-      if (result.success) {
-        setReplyText(prev => ({ ...prev, [commentId]: '' }))
-        const comments = await window.gh.prComments(directory, prStatus.number)
-        setPrComments(comments)
-      } else {
-        setGitOpError({ operation: 'Reply', message: result.error || 'Failed to post reply' })
-      }
-    } catch (err) {
-      setGitOpError({ operation: 'Reply', message: String(err) })
-    } finally {
-      setIsSubmittingReply(null)
-    }
-  }
-
   return {
     handleRevertFile,
     handleStage,
@@ -361,7 +339,6 @@ export function useSourceControlActions({
     handleCommitMerge,
     handleResolveConflicts,
     handleToggleCommit,
-    handleReplyToComment,
     ...gitActions,
   }
 }

@@ -51,13 +51,6 @@ function makeData(overrides: Partial<SourceControlData> = {}): SourceControlData
     isPushingToMain: false,
     setIsPushingToMain: vi.fn(),
     currentHeadCommit: null,
-    prComments: [],
-    setPrComments: vi.fn(),
-    isCommentsLoading: false,
-    replyText: {},
-    setReplyText: vi.fn(),
-    isSubmittingReply: null,
-    setIsSubmittingReply: vi.fn(),
     hasChangesSincePush: true,
     resetPr: vi.fn(),
     currentRepo: undefined,
@@ -393,78 +386,6 @@ describe('useSourceControlActions', () => {
       expect(data.setCommitFilesByHash).toHaveBeenCalled()
       // Should still clear loading state
       expect(data.setLoadingCommitFiles).toHaveBeenCalledTimes(2)
-    })
-  })
-
-  describe('handleReplyToComment', () => {
-    it('posts a reply and refreshes comments', async () => {
-      vi.mocked(window.gh.replyToComment).mockResolvedValue({ success: true })
-      vi.mocked(window.gh.prComments).mockResolvedValue([])
-      const data = makeData({
-        prStatus: { number: 42, title: 'Test', state: 'OPEN' as const, url: 'https://example.com', headRefName: 'feature', baseRefName: 'main' },
-        replyText: { 1: 'My reply' },
-      })
-
-      const { result } = renderHook(() =>
-        useSourceControlActions({ directory: '/repos/project', data })
-      )
-
-      await act(async () => {
-        await result.current.handleReplyToComment(1)
-      })
-
-      expect(window.gh.replyToComment).toHaveBeenCalledWith('/repos/project', 42, 1, 'My reply')
-      expect(data.setReplyText).toHaveBeenCalled()
-    })
-
-    it('shows error when reply fails with error result', async () => {
-      vi.mocked(window.gh.replyToComment).mockResolvedValue({ success: false, error: 'forbidden' })
-      const data = makeData({
-        prStatus: { number: 42, title: 'Test', state: 'OPEN' as const, url: 'https://example.com', headRefName: 'feature', baseRefName: 'main' },
-        replyText: { 1: 'My reply' },
-      })
-
-      const { result } = renderHook(() =>
-        useSourceControlActions({ directory: '/repos/project', data })
-      )
-
-      await act(async () => {
-        await result.current.handleReplyToComment(1)
-      })
-
-      expect(data.setGitOpError).toHaveBeenCalledWith({ operation: 'Reply', message: 'forbidden' })
-    })
-
-    it('shows error when reply throws', async () => {
-      vi.mocked(window.gh.replyToComment).mockRejectedValue(new Error('network error'))
-      const data = makeData({
-        prStatus: { number: 42, title: 'Test', state: 'OPEN' as const, url: 'https://example.com', headRefName: 'feature', baseRefName: 'main' },
-        replyText: { 1: 'My reply' },
-      })
-
-      const { result } = renderHook(() =>
-        useSourceControlActions({ directory: '/repos/project', data })
-      )
-
-      await act(async () => {
-        await result.current.handleReplyToComment(1)
-      })
-
-      expect(data.setGitOpError).toHaveBeenCalledWith({ operation: 'Reply', message: 'Error: network error' })
-    })
-
-    it('does nothing without PR status', async () => {
-      const data = makeData({ prStatus: null, replyText: { 1: 'My reply' } })
-
-      const { result } = renderHook(() =>
-        useSourceControlActions({ directory: '/repos/project', data })
-      )
-
-      await act(async () => {
-        await result.current.handleReplyToComment(1)
-      })
-
-      expect(window.gh.replyToComment).not.toHaveBeenCalled()
     })
   })
 
