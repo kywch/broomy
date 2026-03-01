@@ -1,8 +1,9 @@
 /**
- * Feature Documentation: Agent Isolation via Docker
+ * Feature Documentation: Repo-Level Docker Isolation
  *
- * Demonstrates the per-agent Docker isolation and skip-permissions settings.
- * Exercises the settings UI flow with mocked Docker — no real containers are started.
+ * Demonstrates per-repo Docker isolation and auto-approve settings.
+ * Exercises the settings UI flow (repo settings, agent auto-approve flag)
+ * and the mixed local/container terminal tabs.
  *
  * Run with: pnpm test:feature-docs agent-isolation
  */
@@ -11,7 +12,7 @@ import type { Page } from '@playwright/test'
 import path from 'path'
 import fs from 'fs'
 import { fileURLToPath } from 'url'
-import { screenshotElement, screenshotRegion } from '../_shared/screenshot-helpers'
+import { screenshotElement } from '../_shared/screenshot-helpers'
 import { generateFeaturePage, generateIndex, FeatureStep } from '../_shared/template'
 
 const __filename = fileURLToPath(import.meta.url)
@@ -31,13 +32,6 @@ async function openSettings() {
   await page.waitForSelector('[data-panel-id="settings"]', { state: 'visible', timeout: 5000 })
 }
 
-/** Helper to close settings panel */
-async function closeSettings() {
-  const settingsButton = page.locator('button[title^="Settings"]')
-  await settingsButton.click()
-  await page.waitForSelector('[data-panel-id="settings"]', { state: 'hidden', timeout: 5000 })
-}
-
 test.beforeAll(async () => {
   await fs.promises.mkdir(SCREENSHOTS, { recursive: true })
   ;({ page } = await resetApp())
@@ -46,12 +40,12 @@ test.beforeAll(async () => {
 test.afterAll(async () => {
   await generateFeaturePage(
     {
-      title: 'Agent Isolation via Docker',
+      title: 'Repo-Level Docker Isolation',
       description:
-        'Broomy supports optional Docker-based container isolation for agents. When enabled, ' +
-        'each session runs inside its own Docker container with access only to the repo directory ' +
-        'and a shared config folder. Combined with the skip-permissions toggle, users can safely ' +
-        'run agents at full speed without risking damage to their machine.',
+        'Broomy supports optional Docker-based container isolation configured per repository. ' +
+        'When enabled, agent sessions run inside Docker containers with access only to the repo ' +
+        'directory. Agents can define an auto-approve flag that gets appended to the command when ' +
+        'the repo has auto-approve enabled. Terminal tabs can be either local or container-based.',
       steps,
     },
     FEATURE_DIR,
@@ -59,8 +53,8 @@ test.afterAll(async () => {
   await generateIndex(FEATURES_ROOT)
 })
 
-test.describe.serial('Feature: Agent Isolation via Docker', () => {
-  test('Step 1: Open settings — view default agent list', async () => {
+test.describe.serial('Feature: Repo-Level Docker Isolation', () => {
+  test('Step 1: Open settings — view agents with auto-approve flag field', async () => {
     await openSettings()
 
     const settingsPanel = page.locator('[data-panel-id="settings"]')
@@ -69,7 +63,7 @@ test.describe.serial('Feature: Agent Isolation via Docker', () => {
     // Wait for agents section to render
     await expect(settingsPanel.locator('text=Agents')).toBeVisible()
 
-    // Verify default agents exist (Claude Code, Codex, etc.)
+    // Verify agents exist
     await expect(settingsPanel.locator('text=Claude Code')).toBeVisible()
 
     await screenshotElement(page, settingsPanel, path.join(SCREENSHOTS, '01-settings-agents.png'), {
@@ -77,14 +71,15 @@ test.describe.serial('Feature: Agent Isolation via Docker', () => {
     })
     steps.push({
       screenshotPath: 'screenshots/01-settings-agents.png',
-      caption: 'Agent list in settings before isolation is configured',
+      caption: 'Agent list in settings — isolation is now configured per-repo, not per-agent',
       description:
-        'The settings panel shows all configured agents. None have isolation or ' +
-        'skip-permissions enabled yet — no docker or auto badges are visible.',
+        'The settings panel shows all configured agents. Agent rows show an "auto" badge ' +
+        'when the agent has a skip-approval flag defined. Isolation settings have moved to ' +
+        'per-repo configuration below.',
     })
   })
 
-  test('Step 2: Click edit on Claude Code agent', async () => {
+  test('Step 2: Edit agent to see skip-approval flag field', async () => {
     const settingsPanel = page.locator('[data-panel-id="settings"]')
 
     // Click the edit button on Claude Code agent row
@@ -92,27 +87,58 @@ test.describe.serial('Feature: Agent Isolation via Docker', () => {
     const editButton = claudeRow.locator('button[title="Edit agent"]')
     await editButton.click()
 
-    // Wait for edit form to appear — it has input fields
+    // Wait for edit form to appear
     await expect(settingsPanel.locator('input[value="Claude Code"]')).toBeVisible({ timeout: 3000 })
 
-    // Verify isolation settings section is visible
-    await expect(settingsPanel.locator('text=Run in Docker container')).toBeVisible()
-    await expect(settingsPanel.locator('text=Skip permission prompts')).toBeVisible()
+    // Verify the auto-approve flag input is visible
+    await expect(settingsPanel.locator('text=Auto-approve flag')).toBeVisible()
 
-    await screenshotElement(page, settingsPanel, path.join(SCREENSHOTS, '02-edit-form.png'), {
+    await screenshotElement(page, settingsPanel, path.join(SCREENSHOTS, '02-agent-edit-form.png'), {
       maxHeight: 700,
     })
     steps.push({
-      screenshotPath: 'screenshots/02-edit-form.png',
-      caption: 'Agent edit form showing isolation checkboxes',
+      screenshotPath: 'screenshots/02-agent-edit-form.png',
+      caption: 'Agent edit form with auto-approve flag text input',
       description:
-        'Clicking edit on an agent shows the full configuration form. At the bottom, ' +
-        'two new checkboxes appear: "Run in Docker container" and "Skip permission prompts". ' +
-        'Both are unchecked by default.',
+        'The agent edit form now has a simple text input for the auto-approve flag ' +
+        '(e.g., "--dangerously-skip-permissions"). This flag is appended to the command ' +
+        'when the repo has auto-approve enabled. Isolation checkboxes have been removed ' +
+        'from the agent form — they live in repo settings now.',
+    })
+
+    // Cancel the edit
+    const cancelButton = settingsPanel.locator('button:text-is("Cancel")')
+    await cancelButton.click()
+  })
+
+  test('Step 3: Scroll to repos section and click edit on a repo', async () => {
+    const settingsPanel = page.locator('[data-panel-id="settings"]')
+
+    // Wait for repos section
+    await expect(settingsPanel.locator('text=Repositories')).toBeVisible()
+
+    // Find the edit button for the demo-project repo
+    const editButton = settingsPanel.locator('button[title="Edit repo settings"]').first()
+    await expect(editButton).toBeVisible()
+    await editButton.click()
+
+    // Wait for repo settings editor to appear
+    await expect(settingsPanel.locator('text=Run in Docker container')).toBeVisible({ timeout: 3000 })
+
+    await screenshotElement(page, settingsPanel, path.join(SCREENSHOTS, '03-repo-settings.png'), {
+      maxHeight: 700,
+    })
+    steps.push({
+      screenshotPath: 'screenshots/03-repo-settings.png',
+      caption: 'Repo settings editor with Docker isolation and auto-approve checkboxes',
+      description:
+        'Clicking edit on a repository opens the repo settings editor. Below the default agent ' +
+        'selector and push-to-main checkbox, two new isolation settings appear: ' +
+        '"Run in Docker container" and "Auto-approve agent commands".',
     })
   })
 
-  test('Step 3: Enable Docker isolation — image input and status appear', async () => {
+  test('Step 4: Enable Docker isolation — image input and status appear', async () => {
     const settingsPanel = page.locator('[data-panel-id="settings"]')
 
     // Check the Docker isolation checkbox
@@ -126,11 +152,11 @@ test.describe.serial('Feature: Agent Isolation via Docker', () => {
     // Docker status indicator should appear (mocked as available in E2E)
     await expect(settingsPanel.locator('text=Docker available')).toBeVisible({ timeout: 5000 })
 
-    await screenshotElement(page, settingsPanel, path.join(SCREENSHOTS, '03-isolation-enabled.png'), {
+    await screenshotElement(page, settingsPanel, path.join(SCREENSHOTS, '04-isolation-enabled.png'), {
       maxHeight: 700,
     })
     steps.push({
-      screenshotPath: 'screenshots/03-isolation-enabled.png',
+      screenshotPath: 'screenshots/04-isolation-enabled.png',
       caption: 'Docker isolation enabled — image input and green status indicator',
       description:
         'After checking "Run in Docker container", a Docker image input field appears ' +
@@ -139,68 +165,37 @@ test.describe.serial('Feature: Agent Isolation via Docker', () => {
     })
   })
 
-  test('Step 4: Enable skip permissions — flag shown with safety warning', async () => {
+  test('Step 5: Enable auto-approve with isolation — no warning shown', async () => {
     const settingsPanel = page.locator('[data-panel-id="settings"]')
 
-    // Check skip permissions
-    const skipCheckbox = settingsPanel.locator('label:has-text("Skip permission prompts") input[type="checkbox"]')
+    // Check auto-approve
+    const skipCheckbox = settingsPanel.locator('label:has-text("Auto-approve agent commands") input[type="checkbox"]')
     await skipCheckbox.check()
 
-    // The flag indicator should show
-    await expect(settingsPanel.locator('text=--dangerously-skip-permissions')).toBeVisible({ timeout: 3000 })
+    // No warning should show since Docker isolation is also enabled
+    await expect(settingsPanel.locator('text=unrestricted access')).not.toBeVisible()
 
-    await screenshotElement(page, settingsPanel, path.join(SCREENSHOTS, '04-skip-permissions.png'), {
+    await screenshotElement(page, settingsPanel, path.join(SCREENSHOTS, '05-auto-approve-safe.png'), {
       maxHeight: 700,
     })
     steps.push({
-      screenshotPath: 'screenshots/04-skip-permissions.png',
-      caption: 'Skip permissions enabled with Docker isolation — shows flag to append',
+      screenshotPath: 'screenshots/05-auto-approve-safe.png',
+      caption: 'Auto-approve enabled with Docker isolation — safe, no warning',
       description:
-        'With both Docker isolation and skip permissions enabled, the UI shows which ' +
-        'flag will be appended to the command (--dangerously-skip-permissions for Claude Code). ' +
-        'No warning is shown because container isolation is also enabled.',
+        'With both Docker isolation and auto-approve enabled, no warning is shown. ' +
+        'This is the recommended safe configuration: agents run at full speed inside ' +
+        'a sandboxed container.',
     })
   })
 
-  test('Step 5: Save and verify badges on agent row', async () => {
+  test('Step 6: Uncheck Docker — warning appears for unsafe auto-approve', async () => {
     const settingsPanel = page.locator('[data-panel-id="settings"]')
 
-    // Click Save
-    const saveButton = settingsPanel.locator('button:text-is("Save")')
-    await saveButton.click()
-
-    // Wait for edit form to close and agent row to reappear with badges
-    await expect(settingsPanel.locator('text=docker')).toBeVisible({ timeout: 3000 })
-    await expect(settingsPanel.locator('text=auto')).toBeVisible({ timeout: 3000 })
-
-    await screenshotElement(page, settingsPanel, path.join(SCREENSHOTS, '05-badges.png'), {
-      maxHeight: 700,
-    })
-    steps.push({
-      screenshotPath: 'screenshots/05-badges.png',
-      caption: 'Agent row shows "docker" and "auto" badges after saving',
-      description:
-        'After saving, the Claude Code agent row now displays two small badges: ' +
-        '"docker" (blue) indicating container isolation is enabled, and "auto" (yellow) ' +
-        'indicating skip permissions is active.',
-    })
-  })
-
-  test('Step 6: Edit again, uncheck Docker — warning appears', async () => {
-    const settingsPanel = page.locator('[data-panel-id="settings"]')
-
-    // Edit Claude Code again
-    const claudeRow = settingsPanel.locator('div:has(> div > div > .font-medium:text-is("Claude Code"))')
-    const editButton = claudeRow.locator('button[title="Edit agent"]')
-    await editButton.click()
-
-    await expect(settingsPanel.locator('input[value="Claude Code"]')).toBeVisible({ timeout: 3000 })
-
-    // Uncheck Docker isolation while skip permissions remains checked
+    // Uncheck Docker isolation while auto-approve remains checked
     const isolationCheckbox = settingsPanel.locator('label:has-text("Run in Docker container") input[type="checkbox"]')
     await isolationCheckbox.uncheck()
 
-    // Warning should appear about skip permissions without isolation
+    // Warning should appear
     await expect(settingsPanel.locator('text=unrestricted access')).toBeVisible({ timeout: 3000 })
 
     await screenshotElement(page, settingsPanel, path.join(SCREENSHOTS, '06-warning.png'), {
@@ -208,42 +203,16 @@ test.describe.serial('Feature: Agent Isolation via Docker', () => {
     })
     steps.push({
       screenshotPath: 'screenshots/06-warning.png',
-      caption: 'Warning when skip permissions is enabled without Docker isolation',
+      caption: 'Warning when auto-approve is enabled without Docker isolation',
       description:
-        'Disabling Docker isolation while skip permissions remains checked triggers a ' +
-        'yellow warning: "Skipping permissions without container isolation gives this agent ' +
-        'unrestricted access to your machine." This guides users toward safe auto-approval.',
+        'Disabling Docker isolation while auto-approve remains checked triggers a ' +
+        'yellow warning: agents will have unrestricted access to the machine. ' +
+        'This guides users toward enabling container isolation for safe auto-approval.',
     })
-  })
 
-  test('Step 7: Cancel and close settings', async () => {
-    const settingsPanel = page.locator('[data-panel-id="settings"]')
-
-    // Cancel the edit (don't save the un-checked isolation)
+    // Re-enable isolation and cancel
+    await isolationCheckbox.check()
     const cancelButton = settingsPanel.locator('button:text-is("Cancel")')
     await cancelButton.click()
-
-    // Badges should still be visible since we cancelled
-    await expect(settingsPanel.locator('text=docker')).toBeVisible({ timeout: 3000 })
-
-    await closeSettings()
-
-    // Verify settings panel is hidden
-    await expect(page.locator('[data-panel-id="settings"]')).not.toBeVisible()
-
-    // Take screenshot of the main app view
-    const mainArea = page.locator('#root > div').first()
-    await screenshotElement(page, mainArea, path.join(SCREENSHOTS, '07-main-view.png'), {
-      maxHeight: 700,
-    })
-    steps.push({
-      screenshotPath: 'screenshots/07-main-view.png',
-      caption: 'Main app view with isolation-enabled agent session',
-      description:
-        'After closing settings, the main view shows the active session. ' +
-        'Sessions using an isolated agent will have their terminal processes ' +
-        'run inside Docker containers, with a "(docker)" info tab available ' +
-        'in the terminal area.',
-    })
   })
 })
