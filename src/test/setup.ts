@@ -18,7 +18,7 @@ import type { FsApi } from '../preload/apis/fs'
 import type { GitApi } from '../preload/apis/git'
 import type { GhApi } from '../preload/apis/gh'
 import type { ConfigApi, ProfilesApi, AgentsApi, ReposApi } from '../preload/apis/config'
-import type { ShellApi, DialogApi, AppApi, UpdateApi } from '../preload/apis/shell'
+import type { ShellApi, DialogApi, AppApi, UpdateApi, WindowControlsApi } from '../preload/apis/shell'
 import type { MenuApi, TsApi } from '../preload/apis/menu'
 
 /** Maps every key of an API type to a Vitest Mock — catches missing/extra keys and non-function values. */
@@ -185,6 +185,13 @@ const mockPty: Mocked<PtyApi> = {
   onExit: vi.fn().mockReturnValue(() => {}),
 }
 
+// Mock window.windowControls
+const mockWindowControls: Mocked<WindowControlsApi> = {
+  minimize: vi.fn().mockResolvedValue(undefined),
+  maximize: vi.fn().mockResolvedValue(undefined),
+  close: vi.fn().mockResolvedValue(undefined),
+}
+
 // Mock window.dialog
 const mockDialog: Mocked<DialogApi> = {
   openFolder: vi.fn().mockResolvedValue(null),
@@ -207,6 +214,7 @@ const broomyMocks = {
   fs: mockFs,
   pty: mockPty,
   dialog: mockDialog,
+  windowControls: mockWindowControls,
 }
 
 // If running in a DOM environment (jsdom/happy-dom), extend the existing window.
