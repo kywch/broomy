@@ -29,9 +29,9 @@ const ANSI = {
   reset: '\x1b[0m',
 }
 
-/** Mapping from agent command to npm install command. */
+/** Mapping from agent command to install command. */
 const AGENT_INSTALL_COMMANDS: Record<string, string> = {
-  claude: 'npm install -g @anthropic-ai/claude-code',
+  claude: 'curl -fsSL https://claude.ai/install.sh | bash',
   codex: 'npm install -g @openai/codex',
   gemini: 'npm install -g @google/gemini-cli',
 }
@@ -182,9 +182,14 @@ export async function ensureAgentInstalled(
   agentCommand: string,
   onProgress: (line: string) => void,
 ): Promise<{ success: boolean; error?: string }> {
-  // Check if agent is already installed
+  // Some agents install per-user (e.g. Claude's install script goes to ~/.claude/local/).
+  // Check and install as the 'node' user so the agent is available when we exec as 'node'.
+  const needsUserInstall = agentCommand === 'claude'
+  const userArgs = needsUserInstall ? ['-u', 'node', '-e', 'HOME=/home/node'] : []
+
+  // Check if agent is already installed (as the user who will run it)
   try {
-    await execFileAsync('docker', ['exec', containerId, 'which', agentCommand])
+    await execFileAsync('docker', ['exec', ...userArgs, containerId, 'which', agentCommand])
     return { success: true }
   } catch {
     // Not installed — continue to install
@@ -200,7 +205,7 @@ export async function ensureAgentInstalled(
 
   return new Promise((resolve) => {
     const child = spawn('docker', [
-      'exec', containerId, 'bash', '-c', installCmd,
+      'exec', ...userArgs, containerId, 'bash', '-c', installCmd,
     ], { stdio: ['ignore', 'pipe', 'pipe'] })
 
     child.stdout.on('data', (data: Buffer) => {
@@ -378,8 +383,9 @@ export function buildDockerExecArgs(
   env: Record<string, string>,
   command?: string,
 ): string[] {
-  // Run as non-root user (node:22-slim has 'node' user at uid 1000)
-  const args: string[] = ['exec', '-it', '-u', 'node', '-w', cwd]
+  // Run as non-root user (node:22-slim has 'node' user at uid 1000).
+  // Must explicitly set HOME — docker exec -u doesn't update it.
+  const args: string[] = ['exec', '-it', '-u', 'node', '-e', 'HOME=/home/node', '-w', cwd]
 
   for (const [key, value] of Object.entries(env)) {
     args.push('-e', `${key}=${value}`)

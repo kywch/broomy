@@ -17,10 +17,10 @@ vi.mock('electron', () => ({
 }))
 
 describe('buildDockerExecArgs', () => {
-  it('builds args for command execution as non-root user', () => {
+  it('builds args for command execution as non-root user with HOME set', () => {
     const args = buildDockerExecArgs('abc123', '/repo', { ANTHROPIC_API_KEY: 'sk-test' }, 'claude')
     expect(args).toEqual([
-      'exec', '-it', '-u', 'node', '-w', '/repo',
+      'exec', '-it', '-u', 'node', '-e', 'HOME=/home/node', '-w', '/repo',
       '-e', 'ANTHROPIC_API_KEY=sk-test',
       'abc123',
       'bash', '-l', '-c', 'claude',
@@ -30,7 +30,7 @@ describe('buildDockerExecArgs', () => {
   it('builds args for interactive shell (no command)', () => {
     const args = buildDockerExecArgs('abc123', '/repo', {})
     expect(args).toEqual([
-      'exec', '-it', '-u', 'node', '-w', '/repo',
+      'exec', '-it', '-u', 'node', '-e', 'HOME=/home/node', '-w', '/repo',
       'abc123',
       'bash', '-l',
     ])
@@ -43,9 +43,11 @@ describe('buildDockerExecArgs', () => {
     expect(args).toContain('B=2')
   })
 
-  it('handles empty env', () => {
+  it('handles empty env (only HOME is set)', () => {
     const args = buildDockerExecArgs('abc123', '/repo', {}, 'ls')
-    expect(args.filter(a => a === '-e')).toHaveLength(0)
+    // Only the built-in HOME=/home/node env var, no user-supplied ones
+    expect(args.filter(a => a === '-e')).toHaveLength(1)
+    expect(args).toContain('HOME=/home/node')
   })
 })
 
@@ -231,9 +233,10 @@ describe('ensureAgentInstalled', () => {
     const result = await promise
     expect(result.success).toBe(true)
     expect(lines[0]).toContain('Installing claude')
+    // Claude installs as 'node' user since its installer writes to ~/.claude/local/
     expect(mockSpawn).toHaveBeenCalledWith(
       'docker',
-      ['exec', 'abc123', 'bash', '-c', 'npm install -g @anthropic-ai/claude-code'],
+      ['exec', '-u', 'node', '-e', 'HOME=/home/node', 'abc123', 'bash', '-c', 'curl -fsSL https://claude.ai/install.sh | bash'],
       expect.any(Object),
     )
   })

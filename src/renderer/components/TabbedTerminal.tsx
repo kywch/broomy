@@ -279,7 +279,7 @@ export default function TabbedTerminal({ sessionId, cwd, isActive, agentCommand,
           <div
             className={`absolute inset-0 ${activeTabId === DOCKER_TAB_ID ? '' : 'invisible pointer-events-none'}`}
           >
-            <DockerInfoPanel repoDir={cwd} />
+            <DockerInfoPanel repoDir={isolation?.repoRootDir || cwd} />
           </div>
         )}
 

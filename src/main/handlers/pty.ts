@@ -172,11 +172,21 @@ function createIsolatedPty(
 
     sendToTerminal('\x1b[2m── Container ready ──\x1b[22m\r\n\r\n')
 
-    // Start docker exec PTY
+    // Start docker exec PTY.
+    // Expand ~ to the container's home dir (/home/node) since Node.js fs APIs
+    // don't expand tilde — only shells do. Without this, env vars like
+    // CLAUDE_CONFIG_DIR=~/.claude create a literal '~' directory.
+    const containerHome = '/home/node'
     const dockerEnv: Record<string, string> = {}
     if (options.env) {
       for (const [key, value] of Object.entries(options.env)) {
-        dockerEnv[key] = value
+        if (value.startsWith('~/')) {
+          dockerEnv[key] = `${containerHome}/${value.slice(2)}`
+        } else if (value === '~') {
+          dockerEnv[key] = containerHome
+        } else {
+          dockerEnv[key] = value
+        }
       }
     }
     const dockerArgs = buildDockerExecArgs(containerId, cwd, dockerEnv, command)
