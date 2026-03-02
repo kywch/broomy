@@ -15,7 +15,7 @@ interface AppCallbacksDeps {
   sessions: Session[]
   activeSessionId: string | null
   agents: AgentConfig[]
-  repos: { id: string; rootDir: string; defaultBranch: string; isolated?: boolean; dockerImage?: string; skipApproval?: boolean }[]
+  repos: { id: string; rootDir: string; defaultBranch: string; isolated?: boolean; isolationMode?: 'docker' | 'devcontainer'; dockerImage?: string; skipApproval?: boolean }[]
   addSession: (directory: string, agentId: string | null, extra?: { repoId?: string; issueNumber?: number; issueTitle?: string; issueUrl?: string; name?: string; sessionType?: 'default' | 'review'; prNumber?: number; prTitle?: string; prUrl?: string; prBaseBranch?: string }) => Promise<DuplicateSessionResult | undefined>
   removeSession: (id: string) => void
   setActiveSession: (id: string | null) => void
@@ -107,7 +107,7 @@ export function useAppCallbacks({
     if (!session.repoId) return undefined
     const repo = repos.find((r) => r.id === session.repoId)
     if (!repo?.isolated) return undefined
-    return { isolated: true, dockerImage: repo.dockerImage, repoRootDir: repo.rootDir }
+    return { isolated: true, isolationMode: repo.isolationMode || 'docker', dockerImage: repo.dockerImage, repoRootDir: repo.rootDir }
   }, [repos])
 
   const handleLayoutSizeChange = useCallback((key: keyof LayoutSizes, value: number) => {

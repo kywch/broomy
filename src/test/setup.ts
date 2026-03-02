@@ -21,6 +21,7 @@ import type { ConfigApi, ProfilesApi, AgentsApi, ReposApi } from '../preload/api
 import type { ShellApi, DialogApi, AppApi, UpdateApi, WindowControlsApi } from '../preload/apis/shell'
 import type { MenuApi, TsApi } from '../preload/apis/menu'
 import type { DockerApi } from '../preload/apis/docker'
+import type { DevcontainerApi } from '../preload/apis/devcontainer'
 
 /** Maps every key of an API type to a Vitest Mock — catches missing/extra keys and non-function values. */
 type Mocked<T> = { [K in keyof T]: Mock }
@@ -205,6 +206,13 @@ const mockDocker: Mocked<DockerApi> = {
   resetContainer: vi.fn().mockResolvedValue(undefined),
 }
 
+// Mock window.devcontainer
+const mockDevcontainer: Mocked<DevcontainerApi> = {
+  status: vi.fn().mockResolvedValue({ available: true, version: '0.71.0' }),
+  hasConfig: vi.fn().mockResolvedValue(false),
+  generateDefaultConfig: vi.fn().mockResolvedValue(undefined),
+}
+
 // All Broomy-specific mocks to attach to window
 const broomyMocks = {
   config: mockConfig,
@@ -223,6 +231,7 @@ const broomyMocks = {
   pty: mockPty,
   dialog: mockDialog,
   docker: mockDocker,
+  devcontainer: mockDevcontainer,
   windowControls: mockWindowControls,
 }
 

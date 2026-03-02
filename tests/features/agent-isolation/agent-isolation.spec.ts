@@ -123,7 +123,7 @@ test.describe.serial('Feature: Repo-Level Docker Isolation', () => {
     await editButton.click()
 
     // Wait for repo settings editor to appear
-    await expect(settingsPanel.locator('text=Run agent in isolated Docker container')).toBeVisible({ timeout: 3000 })
+    await expect(settingsPanel.locator('text=Run agent in isolated container')).toBeVisible({ timeout: 3000 })
 
     await screenshotElement(page, settingsPanel, path.join(SCREENSHOTS, '03-repo-settings.png'), {
       maxHeight: 700,
@@ -134,7 +134,7 @@ test.describe.serial('Feature: Repo-Level Docker Isolation', () => {
       description:
         'Clicking edit on a repository opens the repo settings editor. Below the default agent ' +
         'selector and push-to-main checkbox, two new isolation settings appear: ' +
-        '"Run agent in isolated Docker container" and "Auto-approve agent commands".',
+        '"Run agent in isolated container" and "Auto-approve agent commands".',
     })
   })
 
@@ -142,11 +142,11 @@ test.describe.serial('Feature: Repo-Level Docker Isolation', () => {
     const settingsPanel = page.locator('[data-panel-id="settings"]')
 
     // Check the Docker isolation checkbox
-    const isolationCheckbox = settingsPanel.locator('label:has-text("Run agent in isolated Docker container") input[type="checkbox"]')
+    const isolationCheckbox = settingsPanel.locator('label:has-text("Run agent in isolated container") input[type="checkbox"]')
     await isolationCheckbox.check()
 
     // Docker image input should appear
-    const imageInput = settingsPanel.locator('input[placeholder="broomy/isolation:latest"]')
+    const imageInput = settingsPanel.locator('input[placeholder="node:22-slim"]')
     await expect(imageInput).toBeVisible({ timeout: 3000 })
 
     // Docker status indicator should appear (mocked as available in E2E)
@@ -159,8 +159,8 @@ test.describe.serial('Feature: Repo-Level Docker Isolation', () => {
       screenshotPath: 'screenshots/04-isolation-enabled.png',
       caption: 'Docker isolation enabled — image input and green status indicator',
       description:
-        'After checking "Run agent in isolated Docker container", a Docker image input field appears ' +
-        'with a placeholder of "broomy/isolation:latest". A green status dot shows ' +
+        'After checking "Run agent in isolated container", a Docker image input field appears ' +
+        'with a placeholder of "node:22-slim". A green status dot shows ' +
         '"Docker available", confirming Docker is detected on the system.',
     })
   })
@@ -192,7 +192,7 @@ test.describe.serial('Feature: Repo-Level Docker Isolation', () => {
     const settingsPanel = page.locator('[data-panel-id="settings"]')
 
     // Uncheck Docker isolation while auto-approve remains checked
-    const isolationCheckbox = settingsPanel.locator('label:has-text("Run agent in isolated Docker container") input[type="checkbox"]')
+    const isolationCheckbox = settingsPanel.locator('label:has-text("Run agent in isolated container") input[type="checkbox"]')
     await isolationCheckbox.uncheck()
 
     // Warning should appear

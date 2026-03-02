@@ -106,7 +106,7 @@ interface TabbedTerminalProps {
   isActive: boolean
   agentCommand?: string
   agentEnv?: Record<string, string>
-  isolation?: { isolated: boolean; dockerImage?: string; repoRootDir?: string }
+  isolation?: { isolated: boolean; isolationMode?: 'docker' | 'devcontainer'; dockerImage?: string; repoRootDir?: string }
 }
 
 export default function TabbedTerminal({ sessionId, cwd, isActive, agentCommand, agentEnv, isolation }: TabbedTerminalProps) {
@@ -128,7 +128,7 @@ export default function TabbedTerminal({ sessionId, cwd, isActive, agentCommand,
 
   // Build the combined tab list: Agent tab first, then optional Docker tab, then user tabs
   const agentTab = { id: AGENT_TAB_ID, name: 'Agent' }
-  const dockerTab = isolation?.isolated ? { id: DOCKER_TAB_ID, name: '(docker)' } : null
+  const dockerTab = isolation?.isolated ? { id: DOCKER_TAB_ID, name: isolation.isolationMode === 'devcontainer' ? '(devcontainer)' : '(docker)' } : null
   const allTabs = [agentTab, ...(dockerTab ? [dockerTab] : []), ...userTabs]
   const activeTabId = storedActiveTabId ?? AGENT_TAB_ID
 
@@ -268,6 +268,7 @@ export default function TabbedTerminal({ sessionId, cwd, isActive, agentCommand,
               isAgentTerminal={!!agentCommand}
               isActive={isActive && activeTabId === AGENT_TAB_ID}
               isolated={isolation?.isolated}
+              isolationMode={isolation?.isolationMode}
               dockerImage={isolation?.dockerImage}
               repoRootDir={isolation?.repoRootDir}
             />
@@ -279,7 +280,7 @@ export default function TabbedTerminal({ sessionId, cwd, isActive, agentCommand,
           <div
             className={`absolute inset-0 ${activeTabId === DOCKER_TAB_ID ? '' : 'invisible pointer-events-none'}`}
           >
-            <DockerInfoPanel repoDir={isolation?.repoRootDir || cwd} />
+            <DockerInfoPanel repoDir={isolation.repoRootDir || cwd} isolationMode={isolation.isolationMode} />
           </div>
         )}
 
@@ -295,6 +296,7 @@ export default function TabbedTerminal({ sessionId, cwd, isActive, agentCommand,
                 cwd={cwd}
                 isActive={isActive && tab.id === activeTabId}
                 isolated={tab.isolated}
+                isolationMode={tab.isolated ? isolation?.isolationMode : undefined}
                 dockerImage={tab.isolated ? isolation?.dockerImage : undefined}
                 repoRootDir={tab.isolated ? isolation?.repoRootDir : undefined}
               />

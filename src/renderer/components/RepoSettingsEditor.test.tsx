@@ -220,7 +220,7 @@ describe('RepoSettingsEditor', () => {
     await waitFor(() => {
       expect(screen.queryByText('Loading...')).toBeNull()
     })
-    expect(screen.getByText('Run agent in isolated Docker container')).toBeTruthy()
+    expect(screen.getByText('Run agent in isolated container')).toBeTruthy()
     expect(screen.getByText('Auto-approve agent commands')).toBeTruthy()
   })
 
@@ -229,7 +229,7 @@ describe('RepoSettingsEditor', () => {
     await waitFor(() => {
       expect(screen.queryByText('Loading...')).toBeNull()
     })
-    expect(screen.getByPlaceholderText('broomy/isolation:latest')).toBeTruthy()
+    expect(screen.getByPlaceholderText('node:22-slim')).toBeTruthy()
   })
 
   it('shows warning when skip-approval is on without isolation', async () => {
@@ -250,6 +250,7 @@ describe('RepoSettingsEditor', () => {
     await waitFor(() => {
       expect(onUpdate).toHaveBeenCalledWith(expect.objectContaining({
         isolated: true,
+        isolationMode: 'docker',
         dockerImage: 'my-image',
         skipApproval: true,
       }))
@@ -266,7 +267,7 @@ describe('RepoSettingsEditor', () => {
     const isolationCheckbox = checkboxes[1]
     fireEvent.click(isolationCheckbox)
     await waitFor(() => {
-      expect(screen.getByPlaceholderText('broomy/isolation:latest')).toBeTruthy()
+      expect(screen.getByPlaceholderText('node:22-slim')).toBeTruthy()
     })
   })
 
@@ -290,7 +291,7 @@ describe('RepoSettingsEditor', () => {
     await waitFor(() => {
       expect(screen.queryByText('Loading...')).toBeNull()
     })
-    const imageInput = screen.getByPlaceholderText('broomy/isolation:latest')
+    const imageInput = screen.getByPlaceholderText('node:22-slim')
     fireEvent.change(imageInput, { target: { value: 'custom-image:v2' } })
     fireEvent.click(screen.getByText('Save'))
     await waitFor(() => {
