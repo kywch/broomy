@@ -184,7 +184,7 @@ describe('RepoSettingsView', () => {
   it('renders isolation settings', async () => {
     render(<RepoSettingsView repo={mockRepo} onBack={vi.fn()} />)
     await waitFor(() => {
-      expect(screen.getByText('Run agent in isolated Docker container')).toBeTruthy()
+      expect(screen.getByText('Run agent in isolated container')).toBeTruthy()
       expect(screen.getByText('Auto-approve agent commands')).toBeTruthy()
     })
   })

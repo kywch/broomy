@@ -159,7 +159,7 @@ describe('CloneView', () => {
 
   it('renders isolation settings', () => {
     render(<CloneView onBack={vi.fn()} onComplete={vi.fn()} />)
-    expect(screen.getByText('Run agent in isolated Docker container')).toBeTruthy()
+    expect(screen.getByText('Run agent in isolated container')).toBeTruthy()
     expect(screen.getByText('Auto-approve agent commands')).toBeTruthy()
   })
 

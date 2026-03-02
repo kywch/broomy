@@ -3,7 +3,7 @@
  */
 import { useState, useEffect } from 'react'
 import type { AgentConfig } from '../store/agents'
-import type { ManagedRepo, DockerStatus } from '../../preload/index'
+import type { ManagedRepo, DockerStatus, DevcontainerStatus } from '../../preload/index'
 import { IsolationSettings } from './IsolationSettings'
 
 function ErrorBanner({ error, onDismiss, onShowDetails }: {
@@ -63,9 +63,12 @@ export function RepoSettingsEditor({
   const [defaultAgentId, setDefaultAgentId] = useState(repo.defaultAgentId || '')
   const [allowPushToMain, setAllowPushToMain] = useState(repo.allowPushToMain ?? false)
   const [isolated, setIsolated] = useState(repo.isolated ?? false)
+  const [isolationMode, setIsolationMode] = useState<'docker' | 'devcontainer'>(repo.isolationMode || 'docker')
   const [dockerImage, setDockerImage] = useState(repo.dockerImage || '')
   const [skipApproval, setSkipApproval] = useState(repo.skipApproval ?? false)
   const [dockerStatus, setDockerStatus] = useState<DockerStatus | null>(null)
+  const [devcontainerStatus, setDevcontainerStatus] = useState<DevcontainerStatus | null>(null)
+  const [hasDevcontainerConfigState, setHasDevcontainerConfig] = useState<boolean | null>(null)
   const [initScript, setInitScript] = useState('')
   const [loadingScript, setLoadingScript] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -77,6 +80,15 @@ export function RepoSettingsEditor({
       void window.docker.status().then(setDockerStatus)
     }
   }, [isolated])
+
+  useEffect(() => {
+    if (isolated && isolationMode === 'devcontainer') {
+      void window.devcontainer.status().then(setDevcontainerStatus)
+      // Check main worktree for devcontainer config (rootDir/defaultBranch/)
+      const mainWorktree = `${repo.rootDir}/${repo.defaultBranch}`
+      void window.devcontainer.hasConfig(mainWorktree).then(setHasDevcontainerConfig)
+    }
+  }, [isolated, isolationMode, repo.rootDir, repo.defaultBranch])
 
   useEffect(() => {
     async function loadScript() {
@@ -99,6 +111,7 @@ export function RepoSettingsEditor({
         defaultAgentId: defaultAgentId || undefined,
         allowPushToMain,
         isolated: isolated || undefined,
+        isolationMode: isolated ? isolationMode : undefined,
         dockerImage: dockerImage.trim() || undefined,
         skipApproval: skipApproval || undefined,
       })
@@ -174,9 +187,15 @@ export function RepoSettingsEditor({
       </div>
 
       <IsolationSettings
-        isolated={isolated} dockerImage={dockerImage} skipApproval={skipApproval}
-        dockerStatus={dockerStatus} onIsolatedChange={setIsolated}
+        isolated={isolated} isolationMode={isolationMode} dockerImage={dockerImage} skipApproval={skipApproval}
+        dockerStatus={dockerStatus} devcontainerStatus={devcontainerStatus}
+        hasDevcontainerConfig={hasDevcontainerConfigState}
+        onIsolatedChange={setIsolated} onIsolationModeChange={setIsolationMode}
         onDockerImageChange={setDockerImage} onSkipApprovalChange={setSkipApproval}
+        onGenerateDevcontainerConfig={async () => {
+          await window.devcontainer.generateDefaultConfig(`${repo.rootDir}/${repo.defaultBranch}`)
+          setHasDevcontainerConfig(true)
+        }}
       />
 
       <div className="space-y-2">
