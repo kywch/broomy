@@ -15,6 +15,7 @@ import pkg from 'electron-updater'
 const { autoUpdater } = pkg
 import { join, dirname } from 'path'
 import { existsSync, readFileSync, FSWatcher } from 'fs'
+import { execFileSync } from 'child_process'
 import * as pty from 'node-pty'
 import { isWindows, isMac, isLinux, resolveWindowsCommand } from './platform'
 import { registerAllHandlers, HandlerContext, PROFILES_FILE } from './handlers'
@@ -83,6 +84,8 @@ const profileWindows = new Map<string, BrowserWindow>()
 const ptyOwnerWindows = new Map<string, BrowserWindow>()
 // Track which window owns each file watcher
 const watcherOwnerWindows = new Map<string, BrowserWindow>()
+// Track Docker containers for isolation
+const dockerContainers = new Map<string, import('./handlers/types').DockerContainerState>()
 let mainWindow: BrowserWindow | null = null
 
 function createWindow(profileId?: string): BrowserWindow {
@@ -255,6 +258,7 @@ const context: HandlerContext & { createWindow: (profileId?: string) => BrowserW
   get mainWindow() { return mainWindow },
   E2E_MOCK_SHELL: process.env.E2E_MOCK_SHELL,
   FAKE_CLAUDE_SCRIPT: process.env.FAKE_CLAUDE_SCRIPT,
+  dockerContainers,
   createWindow,
 }
 
@@ -449,7 +453,25 @@ app.on('window-all-closed', () => {
     watcher.close()
     fileWatchers.delete(id)
   }
+  stopDockerContainers()
   if (process.platform !== 'darwin') {
     app.quit()
   }
 })
+
+// Also stop containers on Cmd+Q / Quit (macOS doesn't always fire window-all-closed)
+app.on('will-quit', () => {
+  stopDockerContainers()
+})
+
+function stopDockerContainers() {
+  try {
+    const ids = execFileSync('docker', ['ps', '-q', '--filter', 'name=broomy-'], { encoding: 'utf-8' }).trim()
+    if (ids) {
+      execFileSync('docker', ['stop', ...ids.split('\n').filter(Boolean)], { timeout: 10000 })
+    }
+  } catch {
+    // Docker not available or already stopped — ignore
+  }
+  context.dockerContainers.clear()
+}

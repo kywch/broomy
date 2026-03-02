@@ -46,6 +46,7 @@ export interface PanelsMapConfig {
   fetchGitStatus: () => void | Promise<void>
   getAgentCommand: (session: Session) => string | undefined
   getAgentEnv: (session: Session) => Record<string, string> | undefined
+  getRepoIsolation: (session: Session) => { isolated: boolean; dockerImage?: string; repoRootDir?: string } | undefined
   globalPanelVisibility: Record<string, boolean>
   toggleGlobalPanel: (panelId: string) => void
   selectFile: (sessionId: string, filePath: string) => void
@@ -180,7 +181,7 @@ export function usePanelsMap(config: PanelsMapConfig) {
     sessions, activeSessionId, activeSession,
     handleSelectSession, handleNewSession, removeSession, refreshPrStatus,
     archiveSession, unarchiveSession,
-    getAgentCommand, getAgentEnv,
+    getAgentCommand, getAgentEnv, getRepoIsolation,
     globalPanelVisibility, toggleGlobalPanel,
     repos,
   } = config
@@ -199,6 +200,7 @@ export function usePanelsMap(config: PanelsMapConfig) {
               isActive={session.id === activeSessionId}
               agentCommand={getAgentCommand(session)}
               agentEnv={getAgentEnv(session)}
+              isolation={getRepoIsolation(session)}
             />
           </PanelErrorBoundary>
         </div>
@@ -207,7 +209,7 @@ export function usePanelsMap(config: PanelsMapConfig) {
         <WelcomeScreen onNewSession={handleNewSession} />
       )}
     </div>
-  ), [sessions, activeSessionId, getAgentCommand, getAgentEnv, handleNewSession])
+  ), [sessions, activeSessionId, getAgentCommand, getAgentEnv, getRepoIsolation, handleNewSession])
 
   const explorerPanel = useExplorerPanel(config)
   const fileViewerPanel = useFileViewerPanel(config)
