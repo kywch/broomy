@@ -13,7 +13,7 @@ import TutorialPanel from '../components/TutorialPanel'
 import { type Session } from '../store/sessions'
 import { PANEL_IDS } from '../panels'
 import { useIssuePlanDetection } from './useIssuePlanDetection'
-import type { FileStatus } from '../components/FileViewer'
+import type { FileStatus, ViewMode } from '../components/FileViewer'
 import type { GitFileStatus, GitStatusResult, ManagedRepo } from '../../preload/index'
 import type { ExplorerFilter, PrState } from '../store/sessions'
 import type { NavigationTarget } from '../utils/fileNavigation'
@@ -46,6 +46,7 @@ export interface PanelsMapConfig {
   fetchGitStatus: () => void | Promise<void>
   getAgentCommand: (session: Session) => string | undefined
   getAgentEnv: (session: Session) => Record<string, string> | undefined
+  getRepoIsolation: (session: Session) => { isolated: boolean; dockerImage?: string; repoRootDir?: string } | undefined
   globalPanelVisibility: Record<string, boolean>
   toggleGlobalPanel: (panelId: string) => void
   selectFile: (sessionId: string, filePath: string) => void
@@ -114,6 +115,18 @@ function useFileViewerPanel(config: PanelsMapConfig) {
   const [tmpdir, setTmpdir] = useState('/tmp')
   useEffect(() => { void window.app.tmpdir().then(setTmpdir) }, [])
 
+  // Track initial view mode per-session so it doesn't change when sessions become inactive
+  const [sessionViewModes, setSessionViewModes] = useState<Record<string, ViewMode>>({})
+  useEffect(() => {
+    if (activeSessionId) {
+      const mode: ViewMode = openFileInDiffMode ? 'diff' : 'latest'
+      setSessionViewModes(prev => {
+        if (prev[activeSessionId] === mode) return prev
+        return { ...prev, [activeSessionId]: mode }
+      })
+    }
+  }, [activeSessionId, openFileInDiffMode])
+
   // Create stable per-session callbacks for save function registration
   const makeSaveFunctionCallback = useCallback((sessionId: string) => {
     return (fn: (() => Promise<void>) | null) => {
@@ -140,7 +153,7 @@ function useFileViewerPanel(config: PanelsMapConfig) {
                 fileStatus={isActive ? selectedFileStatus : undefined}
                 directory={session.directory}
                 onSaveComplete={isActive ? fetchGitStatus : undefined}
-                initialViewMode={isActive && openFileInDiffMode ? 'diff' : 'latest'}
+                initialViewMode={sessionViewModes[session.id] ?? 'latest'}
                 scrollToLine={isActive ? scrollToLine : undefined}
                 searchHighlight={isActive ? searchHighlight : undefined}
                 onDirtyStateChange={(dirty) => setIsFileViewerDirty(session.id, dirty)}
@@ -148,6 +161,7 @@ function useFileViewerPanel(config: PanelsMapConfig) {
                 diffBaseRef={isActive ? diffBaseRef : undefined}
                 diffCurrentRef={isActive ? diffCurrentRef : undefined}
                 diffLabel={isActive ? diffLabel : undefined}
+                isActive={isActive}
                 reviewContext={session.sessionType === 'review' ? {
                   sessionDirectory: session.directory,
                   commentsFilePath: `${tmpdir}/broomy-review-${session.id}/comments.json`,
@@ -159,7 +173,7 @@ function useFileViewerPanel(config: PanelsMapConfig) {
         })}
       </div>
     )
-  }, [sessions, activeSessionId, selectedFileStatus, openFileInDiffMode, scrollToLine, searchHighlight, diffBaseRef, diffCurrentRef, diffLabel, fetchGitStatus, handleToggleFileViewer, handleFileViewerPositionChange, navigateToFile, tmpdir, setIsFileViewerDirty, makeSaveFunctionCallback])
+  }, [sessions, activeSessionId, selectedFileStatus, sessionViewModes, scrollToLine, searchHighlight, diffBaseRef, diffCurrentRef, diffLabel, fetchGitStatus, handleToggleFileViewer, handleFileViewerPositionChange, navigateToFile, tmpdir, setIsFileViewerDirty, makeSaveFunctionCallback])
 }
 
 export function usePanelsMap(config: PanelsMapConfig) {
@@ -167,7 +181,7 @@ export function usePanelsMap(config: PanelsMapConfig) {
     sessions, activeSessionId, activeSession,
     handleSelectSession, handleNewSession, removeSession, refreshPrStatus,
     archiveSession, unarchiveSession,
-    getAgentCommand, getAgentEnv,
+    getAgentCommand, getAgentEnv, getRepoIsolation,
     globalPanelVisibility, toggleGlobalPanel,
     repos,
   } = config
@@ -186,6 +200,7 @@ export function usePanelsMap(config: PanelsMapConfig) {
               isActive={session.id === activeSessionId}
               agentCommand={getAgentCommand(session)}
               agentEnv={getAgentEnv(session)}
+              isolation={getRepoIsolation(session)}
             />
           </PanelErrorBoundary>
         </div>
@@ -194,7 +209,7 @@ export function usePanelsMap(config: PanelsMapConfig) {
         <WelcomeScreen onNewSession={handleNewSession} />
       )}
     </div>
-  ), [sessions, activeSessionId, getAgentCommand, getAgentEnv, handleNewSession])
+  ), [sessions, activeSessionId, getAgentCommand, getAgentEnv, getRepoIsolation, handleNewSession])
 
   const explorerPanel = useExplorerPanel(config)
   const fileViewerPanel = useFileViewerPanel(config)
