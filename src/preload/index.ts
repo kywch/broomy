@@ -19,7 +19,7 @@ export type { FsApi } from './apis/fs'
 export type { GitApi } from './apis/git'
 export type { GhApi } from './apis/gh'
 export type { ConfigApi, ProfilesApi, AgentsApi, ReposApi } from './apis/config'
-export type { ShellApi, DialogApi, AppApi, UpdateApi, UpdateCheckResult } from './apis/shell'
+export type { ShellApi, DialogApi, AppApi, UpdateApi, UpdateCheckResult, WindowControlsApi } from './apis/shell'
 export type { MenuApi, TsApi } from './apis/menu'
 
 export type HelpMenuEvent = 'getting-started' | 'shortcuts' | 'reset-tutorial'
@@ -42,7 +42,7 @@ import type { FsApi } from './apis/fs'
 import type { GitApi } from './apis/git'
 import type { GhApi } from './apis/gh'
 import type { ConfigApi, ProfilesApi, AgentsApi, ReposApi } from './apis/config'
-import type { ShellApi, DialogApi, AppApi, UpdateApi } from './apis/shell'
+import type { ShellApi, DialogApi, AppApi, UpdateApi, WindowControlsApi } from './apis/shell'
 import type { MenuApi, TsApi } from './apis/menu'
 
 // Import API implementations
@@ -51,7 +51,7 @@ import { fsApi } from './apis/fs'
 import { gitApi } from './apis/git'
 import { ghApi } from './apis/gh'
 import { configApi, profilesApi, agentsApi, reposApi } from './apis/config'
-import { shellApi, dialogApi, appApi, updateApi } from './apis/shell'
+import { shellApi, dialogApi, appApi, updateApi, windowControlsApi } from './apis/shell'
 import { menuApi, tsApi } from './apis/menu'
 
 // Forward menu:select-all from main process to a DOM CustomEvent
@@ -76,6 +76,7 @@ contextBridge.exposeInMainWorld('agents', agentsApi)
 contextBridge.exposeInMainWorld('ts', tsApi)
 contextBridge.exposeInMainWorld('help', helpApi)
 contextBridge.exposeInMainWorld('update', updateApi)
+contextBridge.exposeInMainWorld('windowControls', windowControlsApi)
 
 declare global {
   interface Window {
@@ -95,5 +96,6 @@ declare global {
     ts: TsApi
     help: HelpApi
     update: UpdateApi
+    windowControls: WindowControlsApi
   }
 }

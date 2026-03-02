@@ -59,7 +59,6 @@ export function useGitBranchWatcher({ sessions, activeSessionId, updateSessionBr
 
     const watcherId = `git-head-${activeSessionId}`
     let cancelled = false
-    let watcherStarted = false
     let removeListener: (() => void) | null = null
     let debounceTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -100,12 +99,13 @@ export function useGitBranchWatcher({ sessions, activeSessionId, updateSessionBr
       })
 
       const result = await window.fs.watch(watcherId, gitDir)
-      if (result.success) {
-        watcherStarted = true
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- cancelled may change during async iteration
+      if (cancelled) {
+        removeListener()
+        removeListener = null
+        if (result.success) void window.fs.unwatch(watcherId)
+        return
       }
-
-      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- checked after await
-      if (cancelled) return
 
       if (!result.success) {
         removeListener()
@@ -118,7 +118,7 @@ export function useGitBranchWatcher({ sessions, activeSessionId, updateSessionBr
     return () => {
       cancelled = true
       if (removeListener) removeListener()
-      if (watcherStarted) void window.fs.unwatch(watcherId)
+      void window.fs.unwatch(watcherId)
       if (debounceTimer) clearTimeout(debounceTimer)
     }
   }, [activeSessionId, activeDir, updateSessionBranch])

@@ -16,7 +16,7 @@ const { autoUpdater } = pkg
 import { join, dirname } from 'path'
 import { existsSync, readFileSync, FSWatcher } from 'fs'
 import * as pty from 'node-pty'
-import { isWindows, isMac, resolveWindowsCommand } from './platform'
+import { isWindows, isMac, isLinux, resolveWindowsCommand } from './platform'
 import { registerAllHandlers, HandlerContext, PROFILES_FILE } from './handlers'
 import { resolveShellEnv } from './shellEnv'
 import { writeCrashLog } from './crashLog'
@@ -96,6 +96,9 @@ function createWindow(profileId?: string): BrowserWindow {
     ...(isMac ? {
       titleBarStyle: 'hiddenInset' as const,
       trafficLightPosition: { x: 15, y: 10 },
+    } : isLinux ? {
+      frame: false,
+      autoHideMenuBar: true,
     } : {
       titleBarStyle: 'hidden' as const,
       titleBarOverlay: {
@@ -103,6 +106,7 @@ function createWindow(profileId?: string): BrowserWindow {
         symbolColor: '#e0e0e0',
         height: 40,
       },
+      autoHideMenuBar: true,
     }),
     // Hide window in E2E test mode for headless-like behavior (unless E2E_HEADLESS=false)
     show: !(isE2ETest && isHeadless),
