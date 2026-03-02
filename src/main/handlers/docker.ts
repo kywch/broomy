@@ -3,7 +3,7 @@
  */
 import { IpcMain } from 'electron'
 import { HandlerContext } from './types'
-import { isDockerAvailable, getContainerInfo, stopContainer } from '../docker'
+import { isDockerAvailable, getContainerInfo, stopContainer, resetContainer } from '../docker'
 
 export function register(ipcMain: IpcMain, ctx: HandlerContext): void {
   ipcMain.handle('docker:status', async () => {
@@ -13,25 +13,32 @@ export function register(ipcMain: IpcMain, ctx: HandlerContext): void {
     return isDockerAvailable()
   })
 
-  ipcMain.handle('docker:containerInfo', async (_event, sessionId: string) => {
+  ipcMain.handle('docker:containerInfo', async (_event, repoDir: string) => {
     if (ctx.isE2ETest) {
       return null
     }
-    return getContainerInfo(ctx, sessionId)
+    return getContainerInfo(ctx, repoDir)
   })
 
-  ipcMain.handle('docker:stopContainer', async (_event, sessionId: string) => {
+  ipcMain.handle('docker:stopContainer', async (_event, repoDir: string) => {
     if (ctx.isE2ETest) {
       return
     }
-    await stopContainer(ctx, sessionId)
+    await stopContainer(ctx, repoDir)
   })
 
-  ipcMain.handle('docker:restartContainer', async (_event, sessionId: string) => {
+  ipcMain.handle('docker:restartContainer', async (_event, repoDir: string) => {
     if (ctx.isE2ETest) {
       return
     }
-    // Stop then let the next PTY create re-start it
-    await stopContainer(ctx, sessionId)
+    // Stop — the next PTY create will re-start it
+    await stopContainer(ctx, repoDir)
+  })
+
+  ipcMain.handle('docker:resetContainer', async (_event, repoDir: string) => {
+    if (ctx.isE2ETest) {
+      return
+    }
+    await resetContainer(ctx, repoDir)
   })
 }

@@ -202,6 +202,7 @@ const mockDialog: Mocked<DialogApi> = {
 const mockDocker: Mocked<DockerApi> = {
   status: vi.fn().mockResolvedValue({ available: true }),
   containerInfo: vi.fn().mockResolvedValue(null),
+  resetContainer: vi.fn().mockResolvedValue(undefined),
 }
 
 // All Broomy-specific mocks to attach to window

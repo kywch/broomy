@@ -12,7 +12,7 @@ import type { IPty } from 'node-pty'
 import { isWindows, getDefaultShell, resolveWindowsCommand } from '../platform'
 import { HandlerContext } from './types'
 import { getScenarioData } from './scenarios'
-import { isDockerAvailable, ensureContainer, buildDockerExecArgs, dockerSetupMessage } from '../docker'
+import { isDockerAvailable, ensureContainer, buildDockerExecArgs, dockerSetupMessage, imageExists, ensureAgentInstalled, setupContainer, acquireSetupLock, DEFAULT_DOCKER_IMAGE } from '../docker'
 
 /**
  * On Windows, resolve the base command to its full path so agents installed
@@ -52,66 +52,157 @@ function wirePtyEvents(ctx: HandlerContext, ptyProcess: IPty, id: string, sender
   })
 }
 
-/** Spawn an error-display PTY that prints a message and exits. */
-function spawnErrorPty(ctx: HandlerContext, id: string, cwd: string, message: string, senderWindow: BrowserWindow | null) {
-  const errorShell = isWindows ? (process.env.ComSpec || 'cmd.exe') : '/bin/bash'
-  const ptyProcess = pty.spawn(errorShell, [], {
-    name: 'xterm-256color',
-    cols: 80,
-    rows: 30,
-    cwd,
-    env: process.env as Record<string, string>,
-  })
-  wirePtyEvents(ctx, ptyProcess, id, senderWindow)
+/**
+ * Send ANSI error text directly to the terminal, then signal exit.
+ * No bash process needed — avoids shell prompt artifacts.
+ */
+function displayTerminalError(id: string, message: string, senderWindow: BrowserWindow | null) {
+  const send = (channel: string, data: unknown) => {
+    if (senderWindow && !senderWindow.isDestroyed()) {
+      senderWindow.webContents.send(channel, data)
+    }
+  }
+
   setTimeout(() => {
-    ptyProcess.write(`echo "${message.replace(/"/g, '\\"').replace(/\n/g, '\\n')}"\r`)
-  }, 100)
+    send(`pty:data:${id}`, `\x1b[31m${message}\x1b[0m\r\n`)
+    setTimeout(() => {
+      send(`pty:exit:${id}`, 1)
+    }, 50)
+  }, 150)
 }
 
-/** Handle Docker isolation PTY creation. Returns the PTY result or null to fall through. */
-async function createIsolatedPty(
+/**
+ * Extract the base agent command from a full command string.
+ * e.g. "claude --dangerously-skip-permissions" → "claude"
+ */
+function extractAgentCommand(command: string): string {
+  return command.trim().split(/\s+/)[0]
+}
+
+/**
+ * Handle Docker isolation PTY creation with two-phase flow:
+ * Phase 1 (sync): Return { id } immediately so the renderer can register onData.
+ * Phase 2 (async): Set up container, install agent, start docker exec PTY.
+ */
+function createIsolatedPty(
   ctx: HandlerContext,
   options: { id: string; cwd: string; command?: string; sessionId: string; env?: Record<string, string>; dockerImage?: string },
   senderWindow: BrowserWindow | null,
-): Promise<{ id: string } | null> {
-  const status = await isDockerAvailable()
-  if (!status.available) {
-    spawnErrorPty(ctx, options.id, options.cwd, dockerSetupMessage(status), senderWindow)
-    return { id: options.id }
-  }
+): { id: string } | null {
+  const { id, cwd, command, dockerImage } = options
 
-  const result = await ensureContainer(ctx, options.sessionId, options.cwd, options.dockerImage)
-  if (!result.success || !result.containerId) {
-    spawnErrorPty(ctx, options.id, options.cwd,
-      `Docker container failed to start: ${result.error || 'Unknown error'}`, senderWindow)
-    return { id: options.id }
-  }
-
-  const dockerEnv: Record<string, string> = {}
-  if (options.env) {
-    for (const [key, value] of Object.entries(options.env)) {
-      dockerEnv[key] = value
+  const sendToTerminal = (text: string) => {
+    if (senderWindow && !senderWindow.isDestroyed()) {
+      senderWindow.webContents.send(`pty:data:${id}`, text)
     }
   }
-  const dockerArgs = buildDockerExecArgs(result.containerId, options.cwd, dockerEnv, options.command)
 
-  const ptyProcess = pty.spawn('docker', dockerArgs, {
-    name: 'xterm-256color',
-    cols: 80,
-    rows: 30,
-    cwd: process.cwd(),
-    env: process.env as Record<string, string>,
+  // Phase 1 (sync): Quick checks that don't need async
+  // We launch the async phase and return immediately.
+
+  // Phase 2 (async): Container setup, agent install, PTY start
+  // Uses a per-repo lock so concurrent sessions wait for the first to finish
+  // setup rather than racing on container creation and agent install.
+  const asyncSetup = async () => {
+    sendToTerminal('\x1b[2m── Starting container for agent ──\x1b[22m\r\n')
+
+    // Check Docker availability (before acquiring lock — fast check)
+    const status = await isDockerAvailable()
+    if (!status.available) {
+      displayTerminalError(id, dockerSetupMessage(status), senderWindow)
+      return
+    }
+
+    // Check custom image exists (before acquiring lock — fast check)
+    const img = dockerImage || DEFAULT_DOCKER_IMAGE
+    if (dockerImage) {
+      const hasImage = await imageExists(img)
+      if (!hasImage) {
+        displayTerminalError(id,
+          `Docker image '${img}' not found. Pull or build it, then restart the session.`,
+          senderWindow)
+        return
+      }
+    }
+
+    // Acquire per-repo lock for container creation + setup + agent install.
+    // Second session for the same repo waits here, then gets the already-running
+    // container with the agent already installed.
+    const releaseLock = await acquireSetupLock(cwd)
+    let containerId: string
+    try {
+      // Ensure container exists (pulls default image if needed)
+      const result = await ensureContainer(ctx, cwd, dockerImage, sendToTerminal)
+      if (!result.success || !result.containerId) {
+        displayTerminalError(id,
+          `Docker container failed to start: ${result.error || 'Unknown error'}`,
+          senderWindow)
+        return
+      }
+      containerId = result.containerId
+
+      // First-time setup for new containers
+      if (result.isNew) {
+        const setupResult = await setupContainer(containerId, sendToTerminal)
+        if (!setupResult.success) {
+          displayTerminalError(id,
+            `Container setup failed: ${setupResult.error || 'Unknown error'}`,
+            senderWindow)
+          return
+        }
+      }
+
+      // Install agent if a command was specified
+      if (command) {
+        const agentCmd = extractAgentCommand(command)
+        const installResult = await ensureAgentInstalled(containerId, agentCmd, sendToTerminal)
+        if (!installResult.success) {
+          displayTerminalError(id,
+            `Failed to install ${agentCmd}: ${installResult.error || 'Unknown error'}`,
+            senderWindow)
+          return
+        }
+      }
+    } finally {
+      releaseLock()
+    }
+
+    sendToTerminal('\x1b[2m── Container ready ──\x1b[22m\r\n\r\n')
+
+    // Start docker exec PTY
+    const dockerEnv: Record<string, string> = {}
+    if (options.env) {
+      for (const [key, value] of Object.entries(options.env)) {
+        dockerEnv[key] = value
+      }
+    }
+    const dockerArgs = buildDockerExecArgs(containerId, cwd, dockerEnv, command)
+
+    const ptyProcess = pty.spawn('docker', dockerArgs, {
+      name: 'xterm-256color',
+      cols: 80,
+      rows: 30,
+      cwd: process.cwd(),
+      env: process.env as Record<string, string>,
+    })
+    wirePtyEvents(ctx, ptyProcess, id, senderWindow)
+  }
+
+  // Fire and forget — errors are sent to the terminal
+  asyncSetup().catch((err: unknown) => {
+    displayTerminalError(id, `Unexpected error: ${err instanceof Error ? err.message : String(err)}`, senderWindow)
   })
-  wirePtyEvents(ctx, ptyProcess, options.id, senderWindow)
-  return { id: options.id }
+
+  return { id }
 }
 
 export function register(ipcMain: IpcMain, ctx: HandlerContext): void {
-  ipcMain.handle('pty:create', async (_event, options: { id: string; cwd: string; command?: string; sessionId?: string; env?: Record<string, string>; shell?: string; isolated?: boolean; dockerImage?: string }) => {
+  ipcMain.handle('pty:create', (_event, options: { id: string; cwd: string; command?: string; sessionId?: string; env?: Record<string, string>; shell?: string; isolated?: boolean; dockerImage?: string }) => {
     const senderWindow = BrowserWindow.fromWebContents(_event.sender)
 
-    // Docker isolation path
-    if (options.isolated && !ctx.isE2ETest && options.sessionId) {
+    // Docker isolation path (allowed in E2E when E2E_REAL_DOCKER is set)
+    const allowRealDocker = ctx.isE2ETest && process.env.E2E_REAL_DOCKER === 'true'
+    if (options.isolated && (!ctx.isE2ETest || allowRealDocker) && options.sessionId) {
       return createIsolatedPty(ctx, { ...options, sessionId: options.sessionId }, senderWindow)
     }
 

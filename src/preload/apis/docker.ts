@@ -6,10 +6,12 @@ import type { DockerStatus, ContainerInfo } from './types'
 
 export type DockerApi = {
   status: () => Promise<DockerStatus>
-  containerInfo: (sessionId: string) => Promise<ContainerInfo | null>
+  containerInfo: (repoDir: string) => Promise<ContainerInfo | null>
+  resetContainer: (repoDir: string) => Promise<void>
 }
 
 export const dockerApi: DockerApi = {
   status: () => ipcRenderer.invoke('docker:status'),
-  containerInfo: (sessionId) => ipcRenderer.invoke('docker:containerInfo', sessionId),
+  containerInfo: (repoDir) => ipcRenderer.invoke('docker:containerInfo', repoDir),
+  resetContainer: (repoDir) => ipcRenderer.invoke('docker:resetContainer', repoDir),
 }

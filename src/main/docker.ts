@@ -2,12 +2,14 @@
  * Docker container lifecycle management for agent isolation.
  *
  * Uses `docker` CLI directly — no SDK dependency.
+ * Containers are persistent per-repo and survive app restarts.
  */
-import { execFile } from 'child_process'
+import { execFile, spawn } from 'child_process'
 import { promisify } from 'util'
+import { createHash } from 'crypto'
 import { mkdirSync, existsSync } from 'fs'
 import { join } from 'path'
-import { homedir, platform, arch } from 'os'
+import { homedir, platform } from 'os'
 import type { HandlerContext } from './handlers/types'
 import type { DockerStatus, ContainerInfo } from '../preload/apis/types'
 
@@ -19,19 +21,45 @@ export const CONTAINER_SHELLS = [
   { path: '/bin/sh', name: 'sh', isDefault: false },
 ]
 
-/** Map Node.js arch values to Docker platform strings. */
-function dockerPlatform(): string {
-  const a = arch()
-  if (a === 'arm64') return 'linux/arm64'
-  return 'linux/amd64'
-}
-
-export const DEFAULT_DOCKER_IMAGE = 'broomy/isolation:latest'
+export const DEFAULT_DOCKER_IMAGE = 'node:22-slim'
 export const SHARED_CONFIG_DIR = join(homedir(), '.broomy', 'isolation')
 const CONTAINER_MOUNT_PATH = '/home/broomy/.config/broomy-shared'
 
-function containerName(sessionId: string): string {
-  return `broomy-${sessionId}`
+/** ANSI escape helpers for styled terminal output. */
+const ANSI = {
+  dim: (text: string) => `\x1b[2m${text}\x1b[22m`,
+  bold: (text: string) => `\x1b[1m${text}\x1b[22m`,
+  cyan: (text: string) => `\x1b[36m${text}\x1b[39m`,
+  reset: '\x1b[0m',
+}
+
+/** Mapping from agent command to npm install command. */
+const AGENT_INSTALL_COMMANDS: Record<string, string> = {
+  claude: 'npm install -g @anthropic-ai/claude-code',
+  codex: 'npm install -g @openai/codex',
+  gemini: 'npm install -g @google/gemini-cli',
+}
+
+/**
+ * Per-repo setup lock. Prevents concurrent container creation, setup, and
+ * agent install for the same repo — the second caller waits for the first
+ * to finish, then gets the already-running container.
+ */
+const setupLocks = new Map<string, Promise<void>>()
+
+/** Acquire a per-repo lock. Returns a release function. */
+export function acquireSetupLock(repoDir: string): Promise<() => void> {
+  const prev = setupLocks.get(repoDir) ?? Promise.resolve()
+  let release: () => void
+  const next = new Promise<void>((resolve) => { release = resolve })
+  setupLocks.set(repoDir, next)
+  return prev.then(() => release!)
+}
+
+/** Deterministic container name based on repo path. */
+export function containerName(repoDir: string): string {
+  const hash = createHash('sha256').update(repoDir).digest('hex').substring(0, 12)
+  return `broomy-${hash}`
 }
 
 export async function isDockerAvailable(): Promise<DockerStatus> {
@@ -57,29 +85,187 @@ export async function isDockerAvailable(): Promise<DockerStatus> {
   }
 }
 
+export async function imageExists(image: string): Promise<boolean> {
+  try {
+    await execFileAsync('docker', ['image', 'inspect', image])
+    return true
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Pull an image from Docker Hub, streaming progress to onProgress.
+ */
+export async function pullImage(
+  image: string,
+  onProgress: (line: string) => void,
+): Promise<{ success: boolean; error?: string }> {
+  return new Promise((resolve) => {
+    const child = spawn('docker', ['pull', image], {
+      stdio: ['ignore', 'pipe', 'pipe'],
+    })
+
+    child.stdout.on('data', (data: Buffer) => {
+      for (const line of data.toString().split('\n')) {
+        if (line) onProgress(ANSI.dim(`  ${line}`) + '\r\n')
+      }
+    })
+
+    child.stderr.on('data', (data: Buffer) => {
+      for (const line of data.toString().split('\n')) {
+        if (line) onProgress(ANSI.dim(`  ${line}`) + '\r\n')
+      }
+    })
+
+    child.on('error', (err) => {
+      resolve({ success: false, error: err.message })
+    })
+
+    child.on('close', (code) => {
+      if (code === 0) {
+        resolve({ success: true })
+      } else {
+        resolve({ success: false, error: `docker pull exited with code ${code}` })
+      }
+    })
+  })
+}
+
+/**
+ * First-time container setup: install system packages.
+ */
+export async function setupContainer(
+  containerId: string,
+  onProgress: (line: string) => void,
+): Promise<{ success: boolean; error?: string }> {
+  onProgress(ANSI.cyan('▸ Installing system packages (git, curl)...') + '\r\n')
+
+  return new Promise((resolve) => {
+    const child = spawn('docker', [
+      'exec', containerId,
+      'bash', '-c',
+      'apt-get update && apt-get install -y --no-install-recommends git curl ca-certificates && rm -rf /var/lib/apt/lists/*',
+    ], { stdio: ['ignore', 'pipe', 'pipe'] })
+
+    child.stdout.on('data', (data: Buffer) => {
+      for (const line of data.toString().split('\n')) {
+        if (line) onProgress(ANSI.dim(`  ${line}`) + '\r\n')
+      }
+    })
+
+    child.stderr.on('data', (data: Buffer) => {
+      for (const line of data.toString().split('\n')) {
+        if (line) onProgress(ANSI.dim(`  ${line}`) + '\r\n')
+      }
+    })
+
+    child.on('error', (err) => {
+      resolve({ success: false, error: err.message })
+    })
+
+    child.on('close', (code) => {
+      if (code === 0) {
+        resolve({ success: true })
+      } else {
+        resolve({ success: false, error: `Container setup exited with code ${code}` })
+      }
+    })
+  })
+}
+
+/**
+ * Check if an agent command is installed in the container; if not, install it.
+ */
+export async function ensureAgentInstalled(
+  containerId: string,
+  agentCommand: string,
+  onProgress: (line: string) => void,
+): Promise<{ success: boolean; error?: string }> {
+  // Check if agent is already installed
+  try {
+    await execFileAsync('docker', ['exec', containerId, 'which', agentCommand])
+    return { success: true }
+  } catch {
+    // Not installed — continue to install
+  }
+
+  const installCmd = AGENT_INSTALL_COMMANDS[agentCommand]
+  if (!installCmd) {
+    // Unknown agent — skip install, let docker exec fail naturally if command not found
+    return { success: true }
+  }
+
+  onProgress(ANSI.cyan(`▸ Installing ${agentCommand}...`) + '\r\n')
+
+  return new Promise((resolve) => {
+    const child = spawn('docker', [
+      'exec', containerId, 'bash', '-c', installCmd,
+    ], { stdio: ['ignore', 'pipe', 'pipe'] })
+
+    child.stdout.on('data', (data: Buffer) => {
+      for (const line of data.toString().split('\n')) {
+        if (line) onProgress(ANSI.dim(`  ${line}`) + '\r\n')
+      }
+    })
+
+    child.stderr.on('data', (data: Buffer) => {
+      for (const line of data.toString().split('\n')) {
+        if (line) onProgress(ANSI.dim(`  ${line}`) + '\r\n')
+      }
+    })
+
+    child.on('error', (err) => {
+      resolve({ success: false, error: err.message })
+    })
+
+    child.on('close', (code) => {
+      if (code === 0) {
+        resolve({ success: true })
+      } else {
+        resolve({ success: false, error: `${agentCommand} install exited with code ${code}` })
+      }
+    })
+  })
+}
+
+/**
+ * Ensure a persistent container exists for a repo directory.
+ * Reuses existing running containers, restarts stopped ones, or creates new ones.
+ */
 export async function ensureContainer(
   ctx: HandlerContext,
-  sessionId: string,
   repoDir: string,
   image?: string,
-): Promise<{ success: boolean; error?: string; containerId?: string }> {
-  const name = containerName(sessionId)
+  onProgress?: (line: string) => void,
+): Promise<{ success: boolean; error?: string; containerId?: string; isNew?: boolean }> {
+  const name = containerName(repoDir)
   const img = image || DEFAULT_DOCKER_IMAGE
+  const progress = onProgress || (() => {})
 
-  // Check if container already exists and is running
-  const existing = ctx.dockerContainers.get(sessionId)
-  if (existing) {
-    try {
-      const { stdout } = await execFileAsync('docker', [
-        'inspect', '--format', '{{.State.Running}}', name,
-      ])
-      if (stdout.trim() === 'true') {
-        return { success: true, containerId: existing.containerId }
-      }
-    } catch {
-      // Container doesn't exist anymore, clean up tracking
-      ctx.dockerContainers.delete(sessionId)
+  // Check if container already exists (by name, survives app restarts)
+  try {
+    const { stdout } = await execFileAsync('docker', [
+      'inspect', '--format', '{{.State.Status}}\t{{.Id}}', name,
+    ])
+    const [status, containerId] = stdout.trim().split('\t')
+
+    if (status === 'running') {
+      ctx.dockerContainers.set(repoDir, { containerId, repoDir, image: img })
+      return { success: true, containerId, isNew: false }
     }
+
+    if (status === 'exited' || status === 'created') {
+      progress(ANSI.cyan('▸ Restarting container...') + '\r\n')
+      await execFileAsync('docker', ['start', name])
+      ctx.dockerContainers.set(repoDir, { containerId, repoDir, image: img })
+      return { success: true, containerId, isNew: false }
+    }
+
+    // Unknown state (dead, removing, paused, etc.) — remove and recreate
+    try { await execFileAsync('docker', ['rm', '-f', name]) } catch { /* ignore */ }
+  } catch {
+    // Container doesn't exist — will create below
   }
 
   // Ensure shared config directory exists
@@ -87,17 +273,20 @@ export async function ensureContainer(
     mkdirSync(SHARED_CONFIG_DIR, { recursive: true })
   }
 
-  // Remove any stale container with same name
-  try {
-    await execFileAsync('docker', ['rm', '-f', name])
-  } catch {
-    // Ignore — container may not exist
+  // Pull image if not available locally
+  const hasImage = await imageExists(img)
+  if (!hasImage) {
+    progress(ANSI.cyan(`▸ Pulling ${img}...`) + '\r\n')
+    const pullResult = await pullImage(img, progress)
+    if (!pullResult.success) {
+      return { success: false, error: `Failed to pull image: ${pullResult.error}` }
+    }
   }
 
   try {
+    progress(ANSI.cyan('▸ Creating container...') + '\r\n')
     const { stdout } = await execFileAsync('docker', [
       'run', '-d',
-      '--platform', dockerPlatform(),
       '--name', name,
       '-v', `${repoDir}:${repoDir}`,
       '-v', `${SHARED_CONFIG_DIR}:${CONTAINER_MOUNT_PATH}`,
@@ -107,8 +296,8 @@ export async function ensureContainer(
     ])
 
     const containerId = stdout.trim()
-    ctx.dockerContainers.set(sessionId, { containerId, repoDir, image: img })
-    return { success: true, containerId }
+    ctx.dockerContainers.set(repoDir, { containerId, repoDir, image: img })
+    return { success: true, containerId, isNew: true }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     return { success: false, error: message }
@@ -117,10 +306,23 @@ export async function ensureContainer(
 
 export async function stopContainer(
   ctx: HandlerContext,
-  sessionId: string,
+  repoDir: string,
 ): Promise<void> {
-  const name = containerName(sessionId)
-  ctx.dockerContainers.delete(sessionId)
+  const name = containerName(repoDir)
+  ctx.dockerContainers.delete(repoDir)
+  try {
+    await execFileAsync('docker', ['stop', name])
+  } catch {
+    // Ignore — container may already be gone
+  }
+}
+
+export async function resetContainer(
+  ctx: HandlerContext,
+  repoDir: string,
+): Promise<void> {
+  const name = containerName(repoDir)
+  ctx.dockerContainers.delete(repoDir)
   try {
     await execFileAsync('docker', ['rm', '-f', name])
   } catch {
@@ -129,21 +331,21 @@ export async function stopContainer(
 }
 
 export async function stopAllContainers(ctx: HandlerContext): Promise<void> {
-  const sessions = Array.from(ctx.dockerContainers.keys())
-  await Promise.allSettled(sessions.map((sid) => stopContainer(ctx, sid)))
+  const repoDirs = Array.from(ctx.dockerContainers.keys())
+  await Promise.allSettled(repoDirs.map((dir) => stopContainer(ctx, dir)))
 }
 
 export async function getContainerInfo(
   ctx: HandlerContext,
-  sessionId: string,
+  repoDir: string,
 ): Promise<ContainerInfo | null> {
-  const state = ctx.dockerContainers.get(sessionId)
+  const state = ctx.dockerContainers.get(repoDir)
   if (!state) return null
 
   let status: ContainerInfo['status'] = 'stopped'
   try {
     const { stdout } = await execFileAsync('docker', [
-      'inspect', '--format', '{{.State.Status}}', containerName(sessionId),
+      'inspect', '--format', '{{.State.Status}}', containerName(repoDir),
     ])
     const dockerStatus = stdout.trim()
     if (dockerStatus === 'running') status = 'running'
@@ -210,7 +412,7 @@ export function dockerSetupMessage(status: DockerStatus): string {
     '│  After installing, start Docker and restart         │',
     '│  this session.                                      │',
     '│                                                     │',
-    '│  Or disable container isolation in agent settings.  │',
+    '│  Or disable container isolation in repo settings.   │',
     '╰────────────────────────────────────────────────────╯',
     '',
   ].filter((l) => l !== null).join('\r\n')
