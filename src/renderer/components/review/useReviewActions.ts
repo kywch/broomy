@@ -6,7 +6,7 @@ import type { CodeLocation, RequestedChange, ReviewHistory } from '../../types/r
 import type { Session } from '../../store/sessions'
 import type { ManagedRepo } from '../../../preload/index'
 import { buildReviewPrompt, type PrComment } from '../../utils/reviewPromptBuilder'
-import { sendAgentPrompt } from '../../utils/focusHelpers'
+import { sendSkillAwarePrompt } from '../../utils/skillAwarePrompt'
 import type { ReviewDataState } from './useReviewData'
 
 async function fetchReviewContext(
@@ -175,8 +175,15 @@ export function useReviewActions(
       // Write the prompt file
       await window.fs.writeFile(promptFilePath, prompt)
 
-      // Send command to agent terminal
-      await sendAgentPrompt(session.agentPtyId!, 'Please read and follow the instructions in .broomy/review-prompt.md')
+      // Send command to agent terminal (skill-aware)
+      const fallback = 'Please read and follow the instructions in .broomy/review-prompt.md'
+      await sendSkillAwarePrompt({
+        action: 'review',
+        agentPtyId: session.agentPtyId!,
+        directory: session.directory,
+        agentId: session.agentId,
+        fallbackPrompt: fallback,
+      })
       setFetchingStatus('sent')
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
