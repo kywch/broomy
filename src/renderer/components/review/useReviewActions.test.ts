@@ -8,15 +8,9 @@ vi.mock('../../utils/focusHelpers', () => ({
   focusAgentTerminal: vi.fn(),
 }))
 
-import { sendAgentPrompt } from '../../utils/focusHelpers'
 import { useReviewActions } from './useReviewActions'
 import type { Session } from '../../store/sessions'
 import type { ReviewDataState } from './useReviewData'
-
-vi.mock('../../utils/focusHelpers', () => ({
-  sendAgentPrompt: vi.fn().mockResolvedValue(undefined),
-  focusAgentTerminal: vi.fn(),
-}))
 
 function makeSession(overrides: Partial<Session> = {}): Session {
   return {
