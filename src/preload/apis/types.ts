@@ -43,6 +43,7 @@ export type ManagedRepo = {
   reviewInstructions?: string  // Custom instructions for AI review generation
   allowPushToMain?: boolean  // Whether "Push to main" button is shown for this repo
   isolated?: boolean         // Run sessions in this repo inside Docker
+  isolationMode?: 'docker' | 'devcontainer'  // Isolation backend (default: 'docker')
   dockerImage?: string       // Custom Docker image (default: broomy/isolation:latest)
   skipApproval?: boolean     // Auto-approve agent commands when isolated
 }
@@ -128,6 +129,7 @@ export type AgentData = {
   color?: string
   env?: Record<string, string>  // Environment variables for this agent
   skipApprovalFlag?: string    // Free-text flag to append for auto-approval (e.g. "--dangerously-skip-permissions")
+  resumeCommand?: string       // In-session command to resume previous conversation (e.g. "/resume")
 }
 
 export type DockerStatus = {
@@ -141,6 +143,19 @@ export type ContainerInfo = {
   status: 'running' | 'stopped' | 'starting'
   image: string
   repoDir: string
+  isolationMode?: 'docker' | 'devcontainer'
+  remoteUser?: string
+  remoteWorkspaceFolder?: string
+}
+
+export type DevcontainerStatus = {
+  available: boolean
+  error?: string
+  version?: string
+}
+
+export type DevcontainerConfigStatus = {
+  hasConfig: boolean
 }
 
 export type LayoutSizesData = {

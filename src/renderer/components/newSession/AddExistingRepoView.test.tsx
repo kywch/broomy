@@ -133,7 +133,7 @@ describe('AddExistingRepoView', () => {
     fireEvent.click(screen.getByText('Browse'))
 
     await waitFor(() => {
-      expect(screen.getByText('Run agent in isolated Docker container')).toBeTruthy()
+      expect(screen.getByText('Run agent in isolated container')).toBeTruthy()
       expect(screen.getByText('Auto-approve agent commands')).toBeTruthy()
     })
   })

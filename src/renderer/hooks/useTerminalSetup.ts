@@ -23,6 +23,7 @@ export interface TerminalConfig {
   isActive: boolean
   restartKey: number
   isolated?: boolean
+  isolationMode?: 'docker' | 'devcontainer'
   dockerImage?: string
   repoRootDir?: string
 }
@@ -142,7 +143,7 @@ function createScrollTracking(
 // ── Terminal state hook (refs, store wiring, callbacks) ──────────────
 
 function useTerminalState(config: TerminalConfig) {
-  const { sessionId, command, env, isAgentTerminal, cwd, isolated, dockerImage, repoRootDir } = config
+  const { sessionId, command, env, isAgentTerminal, cwd, isolated, isolationMode, dockerImage, repoRootDir } = config
 
   const terminalRef = useRef<XTerm | null>(null)
   const fitAddonRef = useRef<FitAddon | null>(null)
@@ -170,6 +171,8 @@ function useTerminalState(config: TerminalConfig) {
   cwdRef.current = cwd
   const isolatedRef = useRef(isolated)
   isolatedRef.current = isolated
+  const isolationModeRef = useRef(isolationMode)
+  isolationModeRef.current = isolationMode
   const dockerImageRef = useRef(dockerImage)
   dockerImageRef.current = dockerImage
   const repoRootDirRef = useRef(repoRootDir)
@@ -224,7 +227,7 @@ function useTerminalState(config: TerminalConfig) {
     lastUserInputRef, lastInteractionRef, ptyIdRef, isFollowingRef,
     isActiveRef, dataHandlerRef,
     showScrollButton, setShowScrollButton,
-    commandRef, envRef, isAgentTerminalRef, cwdRef, isolatedRef, dockerImageRef, repoRootDirRef,
+    commandRef, envRef, isAgentTerminalRef, cwdRef, isolatedRef, isolationModeRef, dockerImageRef, repoRootDirRef,
     addErrorRef, updateAgentMonitorRef, markSessionReadRef,
     sessionIdRef, setAgentPtyId,
     handleKeyEvent, processPlanDetection,
@@ -321,7 +324,29 @@ export function useTerminalSetup(
     const id = `${sessionId}-${Date.now()}`
     s.ptyIdRef.current = id
 
-    window.pty.create({ id, cwd: effectCwd, command: cmd, sessionId, env: envVars, shell: defaultShell || undefined, isolated: s.isolatedRef.current, dockerImage: s.dockerImageRef.current, repoRootDir: s.repoRootDirRef.current })
+    // Register onData/onExit listeners BEFORE pty.create() so we don't miss
+    // early messages from container setup (which fires async immediately).
+    const dataHandler = createPtyDataHandler({
+      terminal,
+      isAgent,
+      state: s,
+      effectStartTime,
+      isActiveRef: s.isActiveRef,
+    })
+    s.dataHandlerRef.current = dataHandler
+    const removeDataListener = window.pty.onData(id, dataHandler.handleData)
+
+    const removeExitListener = window.pty.onExit(id, (exitCode: number) => {
+      terminal.write(`\r\n[Process exited with code ${exitCode}]\r\n`)
+      if (isAgent && s.sessionIdRef.current) {
+        s.lastStatusRef.current = 'idle'
+        s.scheduleUpdate({ status: 'idle' })
+      }
+    })
+
+    s.cleanupRef.current = () => { dataHandler.clearTimers(); removeDataListener(); removeExitListener() }
+
+    window.pty.create({ id, cwd: effectCwd, command: cmd, sessionId, env: envVars, shell: defaultShell || undefined, isolated: s.isolatedRef.current, isolationMode: s.isolationModeRef.current, dockerImage: s.dockerImageRef.current, repoRootDir: s.repoRootDirRef.current })
       .then(() => {
         if (isAgentTerminal && sessionId) s.setAgentPtyId(sessionId, id)
 
@@ -330,26 +355,6 @@ export function useTerminalSetup(
           if (s.sessionIdRef.current) s.markSessionReadRef.current(s.sessionIdRef.current)
           void window.pty.write(id, data)
         })
-
-        const dataHandler = createPtyDataHandler({
-          terminal,
-          isAgent,
-          state: s,
-          effectStartTime,
-          isActiveRef: s.isActiveRef,
-        })
-        s.dataHandlerRef.current = dataHandler
-        const removeDataListener = window.pty.onData(id, dataHandler.handleData)
-
-        const removeExitListener = window.pty.onExit(id, (exitCode: number) => {
-          terminal.write(`\r\n[Process exited with code ${exitCode}]\r\n`)
-          if (isAgent && s.sessionIdRef.current) {
-            s.lastStatusRef.current = 'idle'
-            s.scheduleUpdate({ status: 'idle' })
-          }
-        })
-
-        s.cleanupRef.current = () => { dataHandler.clearTimers(); removeDataListener(); removeExitListener() }
       })
       .catch((err: unknown) => {
         const errorMsg = `Failed to start terminal: ${err instanceof Error ? err.message : String(err)}`

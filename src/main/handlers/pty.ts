@@ -12,7 +12,8 @@ import type { IPty } from 'node-pty'
 import { isWindows, getDefaultShell, resolveWindowsCommand } from '../platform'
 import { HandlerContext } from './types'
 import { getScenarioData } from './scenarios'
-import { isDockerAvailable, ensureContainer, buildDockerExecArgs, dockerSetupMessage, imageExists, ensureAgentInstalled, setupContainer, acquireSetupLock, DEFAULT_DOCKER_IMAGE } from '../docker'
+import { isDockerAvailable, ensureContainer, buildDockerExecArgs, dockerSetupMessage, imageExists, ensureAgentInstalled, setupContainer, acquireSetupLock, isSetupLockHeld, DEFAULT_DOCKER_IMAGE } from '../docker'
+import { isDevcontainerCliAvailable, hasDevcontainerConfig, devcontainerUp, buildDevcontainerExecArgs, devcontainerSetupMessage } from '../devcontainer'
 
 /**
  * On Windows, resolve the base command to its full path so agents installed
@@ -110,6 +111,7 @@ function createIsolatedPty(
     sendToTerminal('\x1b[2m── Starting container for agent ──\x1b[22m\r\n')
 
     // Check Docker availability (before acquiring lock — fast check)
+    sendToTerminal('\x1b[2m  Checking Docker...\x1b[22m\r\n')
     const status = await isDockerAvailable()
     if (!status.available) {
       displayTerminalError(id, dockerSetupMessage(status), senderWindow)
@@ -119,6 +121,7 @@ function createIsolatedPty(
     // Check custom image exists (before acquiring lock — fast check)
     const img = dockerImage || DEFAULT_DOCKER_IMAGE
     if (dockerImage) {
+      sendToTerminal('\x1b[2m  Checking image...\x1b[22m\r\n')
       const hasImage = await imageExists(img)
       if (!hasImage) {
         displayTerminalError(id,
@@ -131,6 +134,10 @@ function createIsolatedPty(
     // Acquire per-repo lock for container creation + setup + agent install.
     // Second session for the same repo waits here, then gets the already-running
     // container with the agent already installed.
+    const lockContended = isSetupLockHeld(containerKey)
+    if (lockContended) {
+      sendToTerminal('\x1b[2m  Waiting for container setup...\x1b[22m\r\n')
+    }
     const releaseLock = await acquireSetupLock(containerKey)
     let containerId: string
     try {
@@ -209,6 +216,127 @@ function createIsolatedPty(
   return { id }
 }
 
+/**
+ * Handle devcontainer isolation PTY creation with two-phase flow.
+ * Uses devcontainer CLI to start/reuse a dev container, then docker exec for interactive PTY.
+ */
+function createDevcontainerPty(
+  ctx: HandlerContext,
+  options: { id: string; cwd: string; command?: string; sessionId: string; env?: Record<string, string>; repoRootDir?: string },
+  senderWindow: BrowserWindow | null,
+): { id: string } | null {
+  const { id, cwd, command } = options
+  // Devcontainer workspace folder = the worktree directory (cwd), not repoRootDir.
+  // Each worktree may have a different .devcontainer/devcontainer.json, so each
+  // gets its own container. Docker layer caching handles image reuse across worktrees
+  // when configs are identical.
+  const workspaceFolder = cwd
+
+  const sendToTerminal = (text: string) => {
+    if (senderWindow && !senderWindow.isDestroyed()) {
+      senderWindow.webContents.send(`pty:data:${id}`, text)
+    }
+  }
+
+  const asyncSetup = async () => {
+    sendToTerminal('\x1b[2m── Starting dev container ──\x1b[22m\r\n')
+
+    // Check devcontainer CLI availability
+    const status = await isDevcontainerCliAvailable()
+    if (!status.available) {
+      displayTerminalError(id, devcontainerSetupMessage(status), senderWindow)
+      return
+    }
+
+    // Check Docker availability (devcontainer CLI needs Docker)
+    const dockerStatus = await isDockerAvailable()
+    if (!dockerStatus.available) {
+      displayTerminalError(id, dockerSetupMessage(dockerStatus), senderWindow)
+      return
+    }
+
+    // Check for devcontainer config
+    const hasConfig = hasDevcontainerConfig(workspaceFolder)
+    if (!hasConfig) {
+      displayTerminalError(id,
+        'No .devcontainer/devcontainer.json found. Generate one in repo settings or create it manually.',
+        senderWindow)
+      return
+    }
+
+    // Acquire per-repo lock
+    const releaseLock = await acquireSetupLock(workspaceFolder)
+    let containerId: string
+    let remoteUser: string
+    try {
+      // Run devcontainer up
+      const result = await devcontainerUp(workspaceFolder, sendToTerminal)
+      if (!result.success || !result.result) {
+        displayTerminalError(id,
+          `Dev container failed to start: ${result.error || 'Unknown error'}`,
+          senderWindow)
+        return
+      }
+      containerId = result.result.containerId
+      remoteUser = result.result.remoteUser
+
+      // Store container info for DockerInfoPanel
+      ctx.dockerContainers.set(workspaceFolder, {
+        containerId,
+        repoDir: workspaceFolder,
+        image: 'devcontainer',
+      })
+
+      // Install agent if a command was specified
+      if (command) {
+        const agentCmd = extractAgentCommand(command)
+        const installResult = await ensureAgentInstalled(containerId, agentCmd, sendToTerminal)
+        if (!installResult.success) {
+          displayTerminalError(id,
+            `Failed to install ${agentCmd}: ${installResult.error || 'Unknown error'}`,
+            senderWindow)
+          return
+        }
+      }
+    } finally {
+      releaseLock()
+    }
+
+    sendToTerminal('\x1b[2m── Dev container ready ──\x1b[22m\r\n\r\n')
+
+    // Start docker exec PTY using devcontainer's remote user
+    const containerHome = remoteUser === 'root' ? '/root' : `/home/${remoteUser}`
+    const dockerEnv: Record<string, string> = {}
+    if (options.env) {
+      for (const [key, value] of Object.entries(options.env)) {
+        if (value.startsWith('~/')) {
+          dockerEnv[key] = `${containerHome}/${value.slice(2)}`
+        } else if (value === '~') {
+          dockerEnv[key] = containerHome
+        } else {
+          dockerEnv[key] = value
+        }
+      }
+    }
+    const dockerArgs = buildDevcontainerExecArgs(containerId, remoteUser, cwd, dockerEnv, command)
+
+    const ptyProcess = pty.spawn('docker', dockerArgs, {
+      name: 'xterm-256color',
+      cols: 80,
+      rows: 30,
+      cwd: process.cwd(),
+      env: process.env as Record<string, string>,
+    })
+    wirePtyEvents(ctx, ptyProcess, id, senderWindow)
+  }
+
+  asyncSetup().catch((err: unknown) => {
+    displayTerminalError(id, `Unexpected error: ${err instanceof Error ? err.message : String(err)}`, senderWindow)
+  })
+
+  return { id }
+}
+
 /** Resolve shell, args, and initial command for the standard (non-isolated) PTY path. */
 function resolveShellConfig(
   ctx: HandlerContext,
@@ -256,12 +384,15 @@ function resolveShellConfig(
 }
 
 export function register(ipcMain: IpcMain, ctx: HandlerContext): void {
-  ipcMain.handle('pty:create', (_event, options: { id: string; cwd: string; command?: string; sessionId?: string; env?: Record<string, string>; shell?: string; isolated?: boolean; dockerImage?: string; repoRootDir?: string }) => {
+  ipcMain.handle('pty:create', (_event, options: { id: string; cwd: string; command?: string; sessionId?: string; env?: Record<string, string>; shell?: string; isolated?: boolean; isolationMode?: 'docker' | 'devcontainer'; dockerImage?: string; repoRootDir?: string }) => {
     const senderWindow = BrowserWindow.fromWebContents(_event.sender)
 
-    // Docker isolation path (allowed in E2E when E2E_REAL_DOCKER is set)
+    // Container isolation path (allowed in E2E when E2E_REAL_DOCKER is set)
     const allowRealDocker = ctx.isE2ETest && process.env.E2E_REAL_DOCKER === 'true'
     if (options.isolated && (!ctx.isE2ETest || allowRealDocker) && options.sessionId) {
+      if (options.isolationMode === 'devcontainer') {
+        return createDevcontainerPty(ctx, { ...options, sessionId: options.sessionId }, senderWindow)
+      }
       return createIsolatedPty(ctx, { ...options, sessionId: options.sessionId }, senderWindow)
     }
 
