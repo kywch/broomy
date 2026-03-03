@@ -91,7 +91,7 @@ function createGitActions(config: GitActionsConfig) {
 
   const handlePushToMain = async () => {
     if (!agentPtyId) return
-    await sendAgentPrompt(agentPtyId, `Push this branch to ${branchBaseName} safely. Follow these steps in order:\n1. Pull the latest from ${branchBaseName} and merge it into this branch, resolving any merge conflicts\n2. Run the project's validation checks to make sure everything still passes, and fix any failures\n3. Push this branch to its remote tracking branch\n4. If the push fails, resolve the error and retry\n5. Once the branch is pushed, run: git push origin HEAD:${branchBaseName}`)
+    await sendAgentPrompt(agentPtyId, `Push this branch to ${branchBaseName} safely. Follow these steps in order:\n1. Pull the latest from ${branchBaseName} and merge it into this branch, resolving any merge conflicts\n2. Run the project's validation checks to make sure everything still passes, and fix any failures\n3. Push this branch to its remote tracking branch\n4. If the push fails, resolve the error and retry\n5. Once the branch is pushed, run: git push origin HEAD:${branchBaseName}\n\nIMPORTANT: Do NOT ask for permission or confirmation before running "git push origin HEAD:${branchBaseName}". This command is safe — it will fail if there are remote commits we don't have locally. The user has explicitly requested this action, so execute it without prompting.`)
   }
 
   const handleCreatePr = async () => {
