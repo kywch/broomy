@@ -183,6 +183,7 @@ export function createCoreActions(get: StoreGet, set: StoreSet) {
             lastKnownPrNumber: sessionData.lastKnownPrNumber,
             lastKnownPrUrl: sessionData.lastKnownPrUrl,
             isArchived: sessionData.isArchived ?? false,
+            isRestored: true,
           }
           sessions.push(session)
         }
@@ -269,6 +270,7 @@ export function createCoreActions(get: StoreGet, set: StoreSet) {
         terminalTabs: createDefaultTerminalTabs(),
         branchStatus: 'in-progress',
         isArchived: false,
+        isRestored: false,
       }
 
       const { sessions } = get()
