@@ -92,6 +92,7 @@ export function SourceControl({
       issueNumber={issueNumber}
       issueTitle={issueTitle}
       issueUrl={issueUrl}
+      onRetryGitOp={actions.handleSync}
     />
   )
 
