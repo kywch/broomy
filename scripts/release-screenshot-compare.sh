@@ -50,6 +50,10 @@ fail() {
 # Args: $1 = label (e.g. "baseline"), $2 = target dir, $3 = results json path
 #        $4 = ref label, $5... = feature names to run
 run_walkthroughs() {
+  # Disable set -e inside this function — we handle all errors explicitly
+  # and need to tolerate test failures without aborting.
+  set +e
+
   local label="$1"
   local target_dir="$2"
   local results_json="$3"
@@ -194,6 +198,9 @@ fs.writeFileSync(process.argv[6], JSON.stringify(results, null, 2));
   else
     warn "$passed passed, $failed failed, $skipped_count skipped"
   fi
+
+  # Re-enable set -e for the rest of the script
+  set -e
 }
 
 # ──────────────────────────────────────────────────────────────
