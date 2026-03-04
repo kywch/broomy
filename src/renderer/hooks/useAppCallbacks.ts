@@ -3,7 +3,6 @@
  */
 import { useCallback } from 'react'
 import { type Session, type LayoutSizes } from '../store/sessions'
-import { useErrorStore } from '../store/errors'
 import { PANEL_IDS } from '../panels'
 import type { AgentConfig } from '../store/agents'
 import type { PrState } from '../utils/branchStatus'
@@ -25,6 +24,7 @@ interface AppCallbacksDeps {
   updatePrState: (sessionId: string, prState: PrState, prNumber?: number, prUrl?: string) => void
   setShowNewSessionDialog: (show: boolean) => void
   onSessionAlreadyExists?: (info: { name: string; wasArchived: boolean }) => void
+  onError: (msg: string) => void
 }
 
 export function useAppCallbacks({
@@ -41,8 +41,8 @@ export function useAppCallbacks({
   updatePrState,
   setShowNewSessionDialog,
   onSessionAlreadyExists,
+  onError,
 }: AppCallbacksDeps) {
-  const { addError } = useErrorStore()
 
   const handleNewSession = useCallback(() => {
     setShowNewSessionDialog(true)
@@ -59,10 +59,10 @@ export function useAppCallbacks({
         onSessionAlreadyExists?.({ name: result.existingSessionName, wasArchived: result.wasArchived })
       }
     } catch (error) {
-      addError(`Failed to add session: ${error instanceof Error ? error.message : String(error)}`)
+      onError(`Failed to add session: ${error instanceof Error ? error.message : String(error)}`)
     }
     setShowNewSessionDialog(false)
-  }, [addSession, addError, setShowNewSessionDialog, onSessionAlreadyExists])
+  }, [addSession, onError, setShowNewSessionDialog, onSessionAlreadyExists])
 
   const handleCancelNewSession = useCallback(() => {
     setShowNewSessionDialog(false)
@@ -146,23 +146,23 @@ export function useAppCallbacks({
           try {
             const removeResult = await window.git.worktreeRemove(mainDir, session.directory)
             if (!removeResult.success) {
-              addError(`Failed to remove worktree: ${removeResult.error}`)
+              onError(`Failed to remove worktree: ${removeResult.error}`)
             }
           } catch (error) {
-            addError(`Failed to remove worktree: ${error instanceof Error ? error.message : String(error)}`)
+            onError(`Failed to remove worktree: ${error instanceof Error ? error.message : String(error)}`)
           }
           try {
             const branchResult = await window.git.deleteBranch(mainDir, session.branch)
             if (!branchResult.success) {
-              addError(`Failed to delete branch: ${branchResult.error}`)
+              onError(`Failed to delete branch: ${branchResult.error}`)
             }
           } catch (error) {
-            addError(`Failed to delete branch: ${error instanceof Error ? error.message : String(error)}`)
+            onError(`Failed to delete branch: ${error instanceof Error ? error.message : String(error)}`)
           }
         })()
       }
     }
-  }, [sessions, repos, removeSession, addError])
+  }, [sessions, repos, removeSession, onError])
 
   const handleTogglePanel = useCallback((panelId: string) => {
     if (activeSessionId) {

@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { allowConsoleWarn } from '../test/console-guard'
 import type { ExecFileException } from 'child_process'
 
 vi.mock('child_process', () => ({
@@ -55,6 +56,7 @@ describe('resolveShellEnv', () => {
   })
 
   it('handles exec errors gracefully', async () => {
+    allowConsoleWarn()
     delete process.env.E2E_TEST
     vi.mocked(execFile).mockImplementation((_cmd, _args, _opts, callback) => {
       const cb = callback as (err: ExecFileException | null, stdout: string) => void

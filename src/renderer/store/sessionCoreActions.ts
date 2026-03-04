@@ -2,7 +2,6 @@
  * Core session store actions for creating, selecting, removing, and updating sessions.
  */
 import { basename } from 'path-browserify'
-import { useErrorStore } from './errors'
 import { PANEL_IDS, DEFAULT_TOOLBAR_PANELS } from '../panels/types'
 import type { Session, PanelVisibility, TerminalTabsState } from './sessions'
 import {
@@ -105,6 +104,7 @@ type StoreSet = (partial: Partial<{
   sessions: Session[]
   activeSessionId: string | null
   isLoading: boolean
+  configLoadError: string | null
   showSidebar: boolean
   sidebarWidth: number
   toolbarPanels: string[]
@@ -230,8 +230,7 @@ export function createCoreActions(get: StoreGet, set: StoreSet) {
         })
       } catch (err) {
         console.warn('[sessions] Failed to load sessions config:', err)
-        useErrorStore.getState().addError('Failed to load session config')
-        set({ sessions: [], activeSessionId: null, isLoading: false })
+        set({ sessions: [], activeSessionId: null, isLoading: false, configLoadError: 'Failed to load session config' })
       }
     },
 
