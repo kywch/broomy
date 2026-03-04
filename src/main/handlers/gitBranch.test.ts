@@ -194,6 +194,30 @@ describe('gitBranch handlers', () => {
       await handlers['git:pushNewBranch'](null, '/repo', 'feature')
       expect(mockGitInstance.push).toHaveBeenCalledWith(['--set-upstream', 'origin', 'feature'])
     })
+
+    it('returns friendly error on directory file conflict', async () => {
+      mockGitInstance.push.mockRejectedValue(new Error(
+        '! refs/heads/release:refs/heads/release [remote rejected] (directory file conflict)'
+      ))
+      const handlers = setupHandlers()
+      const result = await handlers['git:pushNewBranch'](null, '/repo', 'release')
+      expect(result.success).toBe(false)
+      expect(result.error).toContain('conflicts with existing branches')
+      expect(result.error).toContain('"release/"')
+      expect(result.error).toContain('feature/release')
+      // Should NOT contain the raw git error
+      expect(result.error).not.toContain('refs/heads')
+    })
+
+    it('returns friendly error on cannot lock ref', async () => {
+      mockGitInstance.push.mockRejectedValue(new Error(
+        'cannot lock ref \'refs/heads/release\': \'refs/heads/release/linux\' exists'
+      ))
+      const handlers = setupHandlers()
+      const result = await handlers['git:pushNewBranch'](null, '/repo', 'release')
+      expect(result.success).toBe(false)
+      expect(result.error).toContain('conflicts with existing branches')
+    })
   })
 
   describe('git:defaultBranch', () => {
