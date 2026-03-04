@@ -40,10 +40,11 @@ describe('useReviewData', () => {
     )
 
     expect(result.current.broomyDir).toBe('/test/repo/.broomy')
-    expect(result.current.reviewFilePath).toBe('/test/repo/.broomy/review.json')
-    expect(result.current.commentsFilePath).toBe('/test/repo/.broomy/comments.json')
-    expect(result.current.historyFilePath).toBe('/test/repo/.broomy/review-history.json')
-    expect(result.current.promptFilePath).toBe('/test/repo/.broomy/review-prompt.md')
+    expect(result.current.outputDir).toBe('/test/repo/.broomy/output')
+    expect(result.current.reviewFilePath).toBe('/test/repo/.broomy/output/review.json')
+    expect(result.current.commentsFilePath).toBe('/test/repo/.broomy/output/comments.json')
+    expect(result.current.historyFilePath).toBe('/test/repo/.broomy/output/review-history.json')
+    expect(result.current.promptFilePath).toBe('/test/repo/.broomy/output/review-prompt.md')
   })
 
   it('loads review data on mount when file exists', async () => {
@@ -430,7 +431,7 @@ describe('useReviewData', () => {
 
     // Should have written history file
     expect(window.fs.writeFile).toHaveBeenCalledWith(
-      '/test/repo/.broomy/review-history.json',
+      '/test/repo/.broomy/output/review-history.json',
       expect.any(String)
     )
   })

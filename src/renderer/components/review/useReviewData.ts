@@ -37,6 +37,7 @@ export interface ReviewDataState {
   lastPushTime: string | null
   unpushedCount: number
   broomyDir: string
+  outputDir: string
   reviewFilePath: string
   commentsFilePath: string
   historyFilePath: string
@@ -83,12 +84,13 @@ export function useReviewData(sessionId: string, sessionDirectory: string, prBas
     prCommentsHasMore, loadOlderComments, refreshComments, resetGitHubPrData,
   } = useGitHubPrData(sessionId, sessionDirectory, prNumber)
 
-  // All files live in .broomy folder in the repo
+  // Generated files live in .broomy/output/ (gitignored via .broomy/.gitignore)
   const broomyDir = `${sessionDirectory}/.broomy`
-  const reviewFilePath = `${broomyDir}/review.json`
-  const commentsFilePath = `${broomyDir}/comments.json`
-  const historyFilePath = `${broomyDir}/review-history.json`
-  const promptFilePath = `${broomyDir}/review-prompt.md`
+  const outputDir = `${broomyDir}/output`
+  const reviewFilePath = `${outputDir}/review.json`
+  const commentsFilePath = `${outputDir}/comments.json`
+  const historyFilePath = `${outputDir}/review-history.json`
+  const promptFilePath = `${outputDir}/review-prompt.md`
 
   // Reset state when session changes
   useEffect(() => {
@@ -174,6 +176,7 @@ export function useReviewData(sessionId: string, sessionDirectory: string, prBas
     lastPushTime,
     unpushedCount,
     broomyDir,
+    outputDir,
     prDescription,
     prGitHubComments,
     prCommentsLoading,

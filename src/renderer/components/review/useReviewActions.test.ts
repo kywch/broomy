@@ -68,10 +68,11 @@ function makeState(overrides: Partial<ReviewDataState> = {}): ReviewDataState {
     lastPushTime: null,
     unpushedCount: 0,
     broomyDir: '/test/repo/.broomy',
-    reviewFilePath: '/test/repo/.broomy/review.json',
-    commentsFilePath: '/test/repo/.broomy/comments.json',
-    historyFilePath: '/test/repo/.broomy/review-history.json',
-    promptFilePath: '/test/repo/.broomy/review-prompt.md',
+    outputDir: '/test/repo/.broomy/output',
+    reviewFilePath: '/test/repo/.broomy/output/review.json',
+    commentsFilePath: '/test/repo/.broomy/output/comments.json',
+    historyFilePath: '/test/repo/.broomy/output/review-history.json',
+    promptFilePath: '/test/repo/.broomy/output/review-prompt.md',
     prDescription: null,
     prGitHubComments: [],
     prCommentsLoading: false,
@@ -222,8 +223,7 @@ describe('useReviewActions', () => {
   })
 
   it('handleGenerateReview shows gitignore modal when not in gitignore', async () => {
-    vi.mocked(window.fs.exists).mockResolvedValue(true)
-    vi.mocked(window.fs.readFile).mockResolvedValue('node_modules\n')
+    vi.mocked(window.fs.exists).mockResolvedValue(false)
 
     const state = makeState()
     const session = makeSession()
@@ -354,9 +354,15 @@ describe('useReviewActions', () => {
     expect(state.setPushResult).toHaveBeenCalledWith('Error: network error')
   })
 
-  it('handleGenerateReview proceeds when .broomy is in gitignore', async () => {
-    vi.mocked(window.fs.exists).mockResolvedValue(true)
-    vi.mocked(window.fs.readFile).mockResolvedValue('node_modules\n.broomy/\n')
+  it('handleGenerateReview proceeds when .broomy/.gitignore has output/', async () => {
+    vi.mocked(window.fs.exists).mockImplementation(async (path: string) => {
+      if (path.includes('.broomy/.gitignore')) return true
+      return true
+    })
+    vi.mocked(window.fs.readFile).mockImplementation(async (path: string) => {
+      if (path.includes('.broomy/.gitignore')) return '/output/\n'
+      return ''
+    })
 
     const state = makeState()
     const session = makeSession()
@@ -375,9 +381,12 @@ describe('useReviewActions', () => {
   })
 
   it('handleGenerateReview fetches base branch before generating', async () => {
-    vi.mocked(window.fs.exists).mockResolvedValue(true)
+    vi.mocked(window.fs.exists).mockImplementation(async (path: string) => {
+      if (path.includes('.broomy/.gitignore')) return true
+      return true
+    })
     vi.mocked(window.fs.readFile).mockImplementation(async (path: string) => {
-      if (path.includes('.gitignore')) return '.broomy/\n'
+      if (path.includes('.broomy/.gitignore')) return '/output/\n'
       return ''
     })
 
@@ -396,9 +405,12 @@ describe('useReviewActions', () => {
   })
 
   it('handleGenerateReview pulls PR branch when prNumber is set', async () => {
-    vi.mocked(window.fs.exists).mockResolvedValue(true)
+    vi.mocked(window.fs.exists).mockImplementation(async (path: string) => {
+      if (path.includes('.broomy/.gitignore')) return true
+      return true
+    })
     vi.mocked(window.fs.readFile).mockImplementation(async (path: string) => {
-      if (path.includes('.gitignore')) return '.broomy/\n'
+      if (path.includes('.broomy/.gitignore')) return '/output/\n'
       return ''
     })
     vi.mocked(window.git.getBranch).mockResolvedValue('feature/review')
@@ -418,9 +430,12 @@ describe('useReviewActions', () => {
   })
 
   it('handleGenerateReview handles generation error', async () => {
-    vi.mocked(window.fs.exists).mockResolvedValue(true)
+    vi.mocked(window.fs.exists).mockImplementation(async (path: string) => {
+      if (path.includes('.broomy/.gitignore')) return true
+      return true
+    })
     vi.mocked(window.fs.readFile).mockImplementation(async (path: string) => {
-      if (path.includes('.gitignore')) return '.broomy/\n'
+      if (path.includes('.broomy/.gitignore')) return '/output/\n'
       return ''
     })
     vi.mocked(window.fs.mkdir).mockRejectedValue(new Error('mkdir failed'))
@@ -441,8 +456,8 @@ describe('useReviewActions', () => {
   })
 
   it('handleGitignoreAdd adds to gitignore and proceeds', async () => {
-    vi.mocked(window.fs.exists).mockResolvedValue(true)
-    vi.mocked(window.fs.readFile).mockResolvedValue('')
+    vi.mocked(window.fs.exists).mockResolvedValue(false)
+    vi.mocked(window.fs.mkdir).mockResolvedValue({ success: true })
 
     const state = makeState()
     const session = makeSession()
@@ -455,7 +470,11 @@ describe('useReviewActions', () => {
       await result.current.handleGitignoreAdd()
     })
 
-    expect(window.fs.appendFile).toHaveBeenCalled()
+    expect(window.fs.mkdir).toHaveBeenCalled()
+    expect(window.fs.writeFile).toHaveBeenCalledWith(
+      '/test/repo/.broomy/.gitignore',
+      '# Broomy generated files\n/output/\n'
+    )
     expect(state.setWaitingForAgent).toHaveBeenCalledWith(true)
   })
 
@@ -523,12 +542,12 @@ describe('useReviewActions', () => {
     }
 
     vi.mocked(window.fs.exists).mockImplementation(async (path: string) => {
-      if (path.includes('.gitignore')) return true
+      if (path.includes('.broomy/.gitignore')) return true
       if (path.includes('review-history.json')) return true
       return true  // mkdir needs to succeed
     })
     vi.mocked(window.fs.readFile).mockImplementation(async (path: string) => {
-      if (path.includes('.gitignore')) return '.broomy/\n'
+      if (path.includes('.broomy/.gitignore')) return '/output/\n'
       if (path.includes('review-history.json')) return JSON.stringify(history)
       return ''
     })
@@ -552,18 +571,18 @@ describe('useReviewActions', () => {
     expect(window.gh.prComments).toHaveBeenCalledWith('/test/repo', 42)
     expect(window.gh.currentUser).toHaveBeenCalled()
     expect(window.fs.writeFile).toHaveBeenCalledWith(
-      '/test/repo/.broomy/review-prompt.md',
+      '/test/repo/.broomy/output/review-prompt.md',
       expect.any(String)
     )
   })
 
   it('handleGenerateReview does not call currentUser when no previous review', async () => {
     vi.mocked(window.fs.exists).mockImplementation(async (path: string) => {
-      if (path.includes('.gitignore')) return true
+      if (path.includes('.broomy/.gitignore')) return true
       return false
     })
     vi.mocked(window.fs.readFile).mockImplementation(async (path: string) => {
-      if (path.includes('.gitignore')) return '.broomy/\n'
+      if (path.includes('.broomy/.gitignore')) return '/output/\n'
       return ''
     })
     vi.mocked(window.fs.mkdir).mockResolvedValue({ success: true })
@@ -583,7 +602,7 @@ describe('useReviewActions', () => {
     expect(window.gh.currentUser).not.toHaveBeenCalled()
   })
 
-  it('addToGitignore creates new .gitignore when none exists', async () => {
+  it('addToGitignore creates new .broomy/.gitignore when none exists', async () => {
     vi.mocked(window.fs.exists).mockImplementation(async (path: string) => {
       if (path.includes('.gitignore')) return false
       return false
@@ -601,8 +620,8 @@ describe('useReviewActions', () => {
     })
 
     expect(window.fs.writeFile).toHaveBeenCalledWith(
-      '/test/repo/.gitignore',
-      '# Broomy review data\n.broomy/\n'
+      '/test/repo/.broomy/.gitignore',
+      '# Broomy generated files\n/output/\n'
     )
   })
 

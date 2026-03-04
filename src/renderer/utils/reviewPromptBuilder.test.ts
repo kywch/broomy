@@ -29,7 +29,7 @@ describe('buildReviewPrompt', () => {
     expect(result).toContain('"prNumber": 42')
     expect(result).toContain('"prTitle": "Add feature"')
     expect(result).toContain('git diff origin/main...HEAD')
-    expect(result).toContain('.broomy/review.json')
+    expect(result).toContain('.broomy/output/review.json')
     expect(result).not.toContain('changesSinceLastReview')
   })
 
