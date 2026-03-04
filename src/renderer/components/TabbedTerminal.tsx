@@ -209,10 +209,10 @@ const TerminalPanels = React.memo(function TerminalPanels({ sessionId, cwd, isAc
           <PanelErrorBoundary name={`Terminal ${tab.name}`}>
             <Terminal
               sessionId={`user-${sessionId}-${tab.id}`} cwd={cwd}
-              isActive={isActive && tab.id === activeTabId} isolated={tab.isolated}
-              isolationMode={tab.isolated ? isolationMode : undefined}
-              dockerImage={tab.isolated ? dockerImage : undefined}
-              repoRootDir={tab.isolated ? repoRootDir : undefined}
+              isActive={isActive && tab.id === activeTabId} isolated={tab.isolated && isolated}
+              isolationMode={tab.isolated && isolated ? isolationMode : undefined}
+              dockerImage={tab.isolated && isolated ? dockerImage : undefined}
+              repoRootDir={tab.isolated && isolated ? repoRootDir : undefined}
             />
           </PanelErrorBoundary>
         </div>

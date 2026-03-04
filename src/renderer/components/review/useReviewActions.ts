@@ -218,7 +218,7 @@ export function useReviewActions(
     }
 
     await proceedWithGeneration()
-  }, [session])
+  }, [session, repo?.reviewInstructions])
 
   const handleGitignoreAdd = async () => {
     try {
@@ -233,7 +233,7 @@ export function useReviewActions(
   const handleGitignoreContinue = () => proceedWithGeneration()
   const handleGitignoreCancel = () => { setShowGitignoreModal(false); setPendingGenerate(false) }
 
-  const handleOpenPrUrl = useCallback(() => { if (session.prUrl) window.open(session.prUrl, '_blank') }, [session.prUrl])
+  const handleOpenPrUrl = useCallback(() => { if (session.prUrl) void window.shell.openExternal(session.prUrl) }, [session.prUrl])
 
   return {
     handleGenerateReview,
