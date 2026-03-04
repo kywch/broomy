@@ -17,8 +17,13 @@ vi.mock('simple-git', () => ({
   default: vi.fn(() => mockGitInstance),
 }))
 
+vi.mock('child_process', () => ({
+  execFile: vi.fn((_cmd: string, _args: string[], _opts: unknown, cb: Function) => cb(null, '', '')),
+}))
+
 vi.mock('../cloneErrorHint', () => ({
   getCloneErrorHint: vi.fn(() => null),
+  getGitAuthHint: vi.fn(() => null),
 }))
 
 vi.mock('../platform', () => ({
@@ -34,7 +39,7 @@ vi.mock('./types', async (importOriginal) => {
 })
 
 import { register } from './gitBranch'
-import { getCloneErrorHint } from '../cloneErrorHint'
+import { getCloneErrorHint, getGitAuthHint } from '../cloneErrorHint'
 import { E2EScenario, type HandlerContext } from './types'
 
 function createMockCtx(overrides: Partial<HandlerContext> = {}): HandlerContext {
@@ -207,6 +212,17 @@ describe('gitBranch handlers', () => {
       expect(result.error).toContain('feature/release')
       // Should NOT contain the raw git error
       expect(result.error).not.toContain('refs/heads')
+    })
+
+    it('returns error with auth hint on generic push failure', async () => {
+      mockGitInstance.push.mockRejectedValue(new Error('Authentication failed'))
+      mockGitInstance.getRemotes.mockResolvedValue([
+        { name: 'origin', refs: { push: 'https://github.com/org/repo.git' } },
+      ])
+      const handlers = setupHandlers()
+      const result = await handlers['git:pushNewBranch'](null, '/repo', 'feature')
+      expect(result.success).toBe(false)
+      expect(result.error).toContain('Authentication failed')
     })
 
     it('returns friendly error on cannot lock ref', async () => {
