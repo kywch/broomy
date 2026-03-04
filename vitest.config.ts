@@ -26,8 +26,6 @@ export default defineConfig({
         'src/renderer/components/newSession/types.ts',
         'src/renderer/components/explorer/types.ts',
         'src/renderer/components/AuthTerminal.tsx',
-        'src/main/docker.ts',
-        'src/main/handlers/docker.ts',
         'src/renderer/components/DockerInfoPanel.tsx',
       ],
       thresholds: {
