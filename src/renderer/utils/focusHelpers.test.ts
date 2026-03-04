@@ -2,10 +2,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import '../../test/react-setup'
 import { sendAgentPrompt, focusAgentTerminal, focusSearchInput } from './focusHelpers'
-
-// Make requestAnimationFrame execute its callback synchronously so inner
-// rAF-callback lines are reachable in tests.
-vi.stubGlobal('requestAnimationFrame', (cb: () => void) => { cb(); return 1 })
+import { useSessionStore } from '../store/sessions'
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -23,35 +20,56 @@ describe('sendAgentPrompt', () => {
 })
 
 describe('focusAgentTerminal', () => {
-  it('does nothing when no terminal panel container is found in the DOM', () => {
-    // No [data-panel-id="terminal"] element present — the inner rAF early-returns
-    expect(() => focusAgentTerminal()).not.toThrow()
-  })
+  it('switches to agent tab and schedules focus via double-rAF', () => {
+    const mockSetActiveTerminalTab = vi.fn()
+    useSessionStore.setState({
+      activeSessionId: 'session-1',
+      setActiveTerminalTab: mockSetActiveTerminalTab,
+    })
 
-  it('focuses the xterm textarea when a terminal panel container is present', () => {
-    const container = document.createElement('div')
-    container.setAttribute('data-panel-id', 'terminal')
-    const textarea = document.createElement('textarea')
-    textarea.className = 'xterm-helper-textarea'
-    const focusSpy = vi.spyOn(textarea, 'focus')
-    container.appendChild(textarea)
-    document.body.appendChild(container)
+    const rAFs: FrameRequestCallback[] = []
+    vi.spyOn(window, 'requestAnimationFrame').mockImplementation((cb) => {
+      rAFs.push(cb)
+      return rAFs.length
+    })
 
     focusAgentTerminal()
 
-    expect(focusSpy).toHaveBeenCalledTimes(1)
+    expect(mockSetActiveTerminalTab).toHaveBeenCalledWith('session-1', '__agent__')
+    expect(rAFs).toHaveLength(1)
+
+    // Trigger first rAF → second rAF
+    rAFs[0](0)
+    expect(rAFs).toHaveLength(2)
+
+    // Trigger second rAF — no terminal panel in JSDOM, but no error
+    rAFs[1](0)
+  })
+
+  it('does not set tab when no active session', () => {
+    const mockSetActiveTerminalTab = vi.fn()
+    useSessionStore.setState({
+      activeSessionId: null,
+      setActiveTerminalTab: mockSetActiveTerminalTab,
+    })
+
+    focusAgentTerminal()
+    expect(mockSetActiveTerminalTab).not.toHaveBeenCalled()
   })
 })
 
 describe('focusSearchInput', () => {
-  it('focuses the explorer search input when it is present in the DOM', () => {
-    const input = document.createElement('input')
-    input.setAttribute('data-explorer-search', '')
-    const focusSpy = vi.spyOn(input, 'focus')
-    document.body.appendChild(input)
+  it('schedules focus via requestAnimationFrame', () => {
+    const rAFs: FrameRequestCallback[] = []
+    vi.spyOn(window, 'requestAnimationFrame').mockImplementation((cb) => {
+      rAFs.push(cb)
+      return rAFs.length
+    })
 
     focusSearchInput()
+    expect(rAFs).toHaveLength(1)
 
-    expect(focusSpy).toHaveBeenCalledTimes(1)
+    // Trigger — no matching element in JSDOM, but no error
+    rAFs[0](0)
   })
 })

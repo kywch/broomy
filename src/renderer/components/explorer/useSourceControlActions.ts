@@ -37,6 +37,12 @@ export function useSourceControlActions({
 
   const handleSync = async () => {
     if (!directory) return
+
+    if (gitStatus.length > 0) {
+      setGitOpError({ operation: 'Sync', message: 'Commit or stash changes before syncing' })
+      return
+    }
+
     setIsSyncing(true)
     setGitOpError(null)
     try {
@@ -89,6 +95,8 @@ export function useSourceControlActions({
       setIsSyncingWithMain(false)
     }
   }
+
+
 
   const handleCommitMerge = async () => {
     if (!directory) return

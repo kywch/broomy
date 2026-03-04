@@ -93,9 +93,6 @@ afterEach(() => {
 
 describe('useReviewActions', () => {
   it('handleOpenPrUrl opens the PR URL', () => {
-    const openSpy = vi.fn()
-    vi.stubGlobal('open', openSpy)
-
     const session = makeSession()
     const onSelectFile = vi.fn()
     const state = makeState()
@@ -108,8 +105,7 @@ describe('useReviewActions', () => {
       result.current.handleOpenPrUrl()
     })
 
-    expect(openSpy).toHaveBeenCalledWith('https://github.com/pr/42', '_blank')
-    vi.unstubAllGlobals()
+    expect(window.shell.openExternal).toHaveBeenCalledWith('https://github.com/pr/42')
   })
 
   it('handleGitignoreCancel closes modal and resets pending', () => {
