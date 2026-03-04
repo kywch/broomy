@@ -35,13 +35,13 @@ export function CloneView({
 
   useEffect(() => {
     if (isolated || dockerStatus === null) {
-      void window.docker.status().then(setDockerStatus)
+      void window.docker.status().then(setDockerStatus).catch(() => setDockerStatus({ available: false, error: 'Failed to check Docker status' }))
     }
   }, [isolated])
 
   useEffect(() => {
     if (isolated && isolationMode === 'devcontainer') {
-      void window.devcontainer.status().then(setDevcontainerStatus)
+      void window.devcontainer.status().then(setDevcontainerStatus).catch(() => setDevcontainerStatus({ available: false, error: 'Failed to check devcontainer status' }))
     }
   }, [isolated, isolationMode])
 

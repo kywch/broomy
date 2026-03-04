@@ -6,7 +6,6 @@ import { Terminal as XTerm } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { SerializeAddon } from '@xterm/addon-serialize'
 
-import { useErrorStore } from '../store/errors'
 import { useSessionStore } from '../store/sessions'
 import { useRepoStore } from '../store/repos'
 import { terminalBufferRegistry } from '../utils/terminalBufferRegistry'
@@ -179,9 +178,6 @@ function useTerminalState(config: TerminalConfig) {
   const repoRootDirRef = useRef(repoRootDir)
   repoRootDirRef.current = repoRootDir
 
-  const { addError } = useErrorStore()
-  const addErrorRef = useRef(addError)
-  addErrorRef.current = addError
   const updateAgentMonitor = useSessionStore((state) => state.updateAgentMonitor)
   const markSessionRead = useSessionStore((state) => state.markSessionRead)
   const setPlanFile = useSessionStore((state) => state.setPlanFile)
@@ -229,7 +225,7 @@ function useTerminalState(config: TerminalConfig) {
     isActiveRef, dataHandlerRef,
     showScrollButton, setShowScrollButton,
     commandRef, envRef, isAgentTerminalRef, cwdRef, isolatedRef, isolationModeRef, dockerImageRef, repoRootDirRef,
-    addErrorRef, updateAgentMonitorRef, markSessionReadRef,
+    updateAgentMonitorRef, markSessionReadRef,
     sessionIdRef, setAgentPtyId,
     handleKeyEvent, processPlanDetection,
     scheduleUpdate, handleScrollToBottom,
@@ -364,7 +360,7 @@ export function useTerminalSetup(
       .catch((err: unknown) => {
         if (isStale) return
         const errorMsg = `Failed to start terminal: ${err instanceof Error ? err.message : String(err)}`
-        s.addErrorRef.current(errorMsg)
+        console.error('[useTerminalSetup]', errorMsg)
         terminal.write(`\r\n\x1b[31mError: Failed to start terminal\x1b[0m\r\n`)
         terminal.write(`\x1b[33m${err instanceof Error ? err.message : String(err)}\x1b[0m\r\n`)
       })

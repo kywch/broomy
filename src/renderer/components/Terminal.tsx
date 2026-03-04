@@ -86,15 +86,23 @@ export default function Terminal({ sessionId, cwd, command, env, isAgentTerminal
         { id: 'restart-agent', label: 'Restart Agent' },
       ] : []),
     ]
-    const result = await window.menu.popup(items)
-    if (result === 'copy' && terminalRef.current) {
-      const text = terminalRef.current.getSelection()
-      if (text) void navigator.clipboard.writeText(text)
-    } else if (result === 'paste' && ptyIdRef.current) {
-      const text = await navigator.clipboard.readText()
-      if (text) void window.pty.write(ptyIdRef.current, text)
-    } else if (result === 'restart-agent') {
-      setRestartKey((k) => k + 1)
+    try {
+      const result = await window.menu.popup(items)
+      if (result === 'copy' && terminalRef.current) {
+        const text = terminalRef.current.getSelection()
+        if (text) void navigator.clipboard.writeText(text)
+      } else if (result === 'paste' && ptyIdRef.current) {
+        try {
+          const text = await navigator.clipboard.readText()
+          if (text) void window.pty.write(ptyIdRef.current, text)
+        } catch (err) {
+          console.warn('[Terminal] Clipboard read failed:', err)
+        }
+      } else if (result === 'restart-agent') {
+        setRestartKey((k) => k + 1)
+      }
+    } catch (err) {
+      console.warn('[Terminal] Context menu failed:', err)
     }
   }, [isAgentTerminal, terminalRef, ptyIdRef])
 

@@ -142,8 +142,6 @@ describe('useTerminalSetup', () => {
       },
     })
     useErrorStore.setState({
-      errors: [],
-      hasUnread: false,
       detailError: null,
     })
 

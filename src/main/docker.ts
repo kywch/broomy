@@ -124,6 +124,7 @@ export async function pullImage(
     const child = spawn('docker', ['pull', image], {
       stdio: ['ignore', 'pipe', 'pipe'],
     })
+    const stderrChunks: string[] = []
 
     child.stdout.on('data', (data: Buffer) => {
       for (const line of data.toString().split('\n')) {
@@ -132,7 +133,9 @@ export async function pullImage(
     })
 
     child.stderr.on('data', (data: Buffer) => {
-      for (const line of data.toString().split('\n')) {
+      const text = data.toString()
+      stderrChunks.push(text)
+      for (const line of text.split('\n')) {
         if (line) onProgress(`${ANSI.dim(`  ${line}`)}\r\n`)
       }
     })
@@ -145,7 +148,18 @@ export async function pullImage(
       if (code === 0) {
         resolve({ success: true })
       } else {
-        resolve({ success: false, error: `docker pull exited with code ${code}` })
+        const stderr = stderrChunks.join('').trim()
+        let errorMsg = `docker pull exited with code ${code}`
+        if (stderr.includes('daemon is not running')) {
+          errorMsg = 'Docker daemon is not running. Start Docker Desktop and try again.'
+        } else if (stderr.includes('not found') || stderr.includes('manifest unknown')) {
+          errorMsg = `Image "${image}" not found. Check the image name and try again.`
+        } else if (stderr.includes('no space left') || stderr.includes('disk full')) {
+          errorMsg = 'Disk full. Free up space and try again.'
+        } else if (stderr) {
+          errorMsg += `: ${stderr.slice(0, 200)}`
+        }
+        resolve({ success: false, error: errorMsg })
       }
     })
   })

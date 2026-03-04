@@ -118,6 +118,7 @@ interface SessionStore {
   sessions: Session[]
   activeSessionId: string | null
   isLoading: boolean
+  configLoadError: string | null
   // Global panel state
   showSidebar: boolean
   showSettings: boolean
@@ -182,6 +183,7 @@ export const useSessionStore = create<SessionStore>((set, get) => {
   sessions: [],
   activeSessionId: null,
   isLoading: true,
+  configLoadError: null,
   showSidebar: true,
   showSettings: false,
   sidebarWidth: DEFAULT_SIDEBAR_WIDTH,

@@ -279,10 +279,10 @@ describe('ghCore handlers', () => {
       expect(result.state).toBe('OPEN')
     })
 
-    it('returns null on error', async () => {
+    it('returns error object on unexpected error', async () => {
       vi.mocked(execFile).mockRejectedValue(new Error('no PR'))
       const handlers = setupHandlers()
-      expect(await handlers['gh:prStatus'](null, '/repo')).toBeNull()
+      expect(await handlers['gh:prStatus'](null, '/repo')).toEqual({ error: 'no PR' })
     })
   })
 
@@ -434,14 +434,14 @@ describe('ghCore handlers', () => {
       expect(result).toBe('octocat')
     })
 
-    it('returns null on error', async () => {
+    it('returns error object on error', async () => {
       vi.mocked(execFile).mockImplementation(() => {
         throw new Error('auth fail')
       })
 
       const handlers = setupHandlers()
       const result = await handlers['gh:currentUser'](null)
-      expect(result).toBeNull()
+      expect(result).toEqual({ error: 'auth fail' })
     })
   })
 })

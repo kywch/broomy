@@ -204,13 +204,20 @@ function createIsolatedPty(
     }
     const dockerArgs = buildDockerExecArgs(containerId, cwd, dockerEnv, command)
 
-    const ptyProcess = pty.spawn('docker', dockerArgs, {
-      name: 'xterm-256color',
-      cols: 80,
-      rows: 30,
-      cwd: process.cwd(),
-      env: process.env as Record<string, string>,
-    })
+    let ptyProcess: IPty
+    try {
+      ptyProcess = pty.spawn('docker', dockerArgs, {
+        name: 'xterm-256color',
+        cols: 80,
+        rows: 30,
+        cwd: process.cwd(),
+        env: process.env as Record<string, string>,
+      })
+    } catch (err) {
+      displayTerminalError(id, `Failed to spawn Docker process: ${err instanceof Error ? err.message : String(err)}`, senderWindow)
+      return
+    }
+    ptyProcess.onExit(() => {}) // prevent unhandled-exit crashes
 
     // Final check: session may have been killed between spawn and wire
     if (!pendingSetups.has(id)) {
@@ -350,13 +357,20 @@ function createDevcontainerPty(
     }
     const dockerArgs = buildDevcontainerExecArgs(containerId, remoteUser, cwd, dockerEnv, command)
 
-    const ptyProcess = pty.spawn('docker', dockerArgs, {
-      name: 'xterm-256color',
-      cols: 80,
-      rows: 30,
-      cwd: process.cwd(),
-      env: process.env as Record<string, string>,
-    })
+    let ptyProcess: IPty
+    try {
+      ptyProcess = pty.spawn('docker', dockerArgs, {
+        name: 'xterm-256color',
+        cols: 80,
+        rows: 30,
+        cwd: process.cwd(),
+        env: process.env as Record<string, string>,
+      })
+    } catch (err) {
+      displayTerminalError(id, `Failed to spawn Docker process: ${err instanceof Error ? err.message : String(err)}`, senderWindow)
+      return
+    }
+    ptyProcess.onExit(() => {}) // prevent unhandled-exit crashes
 
     // Final check: session may have been killed between spawn and wire
     if (!pendingSetups.has(id)) {
@@ -480,7 +494,7 @@ export function register(ipcMain: IpcMain, ctx: HandlerContext): void {
         env,
       })
     } catch (err) {
-      displayTerminalError(options.id, `Failed to start shell: ${err instanceof Error ? err.message : String(err)}`, senderWindow)
+      displayTerminalError(options.id, `Failed to start terminal: ${err instanceof Error ? err.message : String(err)}`, senderWindow)
       return { id: options.id }
     }
 

@@ -242,7 +242,11 @@ function handleWatch(ctx: HandlerContext, _event: IpcMainInvokeEvent, id: string
     ctx.fileWatchers.set(id, watcher)
 
     watcher.on('error', (error) => {
-      console.error('File watcher error:', error)
+      console.error(`[fs:watch] Watcher error for ${id}:`, error)
+      const ownerWindow = ctx.watcherOwnerWindows.get(id) || ctx.mainWindow
+      if (ownerWindow && !ownerWindow.isDestroyed()) {
+        ownerWindow.webContents.send(`fs:watchError:${id}`, String(error))
+      }
       watcher.close()
       ctx.fileWatchers.delete(id)
       ctx.watcherOwnerWindows.delete(id)
