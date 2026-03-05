@@ -155,6 +155,7 @@ export default function AgentSettings({ onClose }: AgentSettingsProps) {
             <SettingsRepoScreen
               repo={repo} agents={agents}
               onUpdateRepo={updateRepo} onOpenCommandsEditor={handleOpenCommandsEditor}
+              onBack={popScreen}
             />
           )
         })()}
