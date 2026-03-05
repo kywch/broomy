@@ -330,6 +330,7 @@ export function useTerminalSetup(
     const dataHandler = createPtyDataHandler({
       terminal,
       isAgent,
+      command: cmd,
       state: s,
       effectStartTime,
       isActiveRef: s.isActiveRef,
@@ -426,10 +427,12 @@ export function useTerminalSetup(
     s.isActiveRef.current = isActive
     s.lastInteractionRef.current = Date.now()
     if (isActive) {
-      // Replay any data that arrived while the terminal was in the background
+      // Fit first so the terminal has correct dimensions before flushing.
+      // Without this, buffered TUI frames render at stale dimensions and
+      // leave orphaned lines / blank gaps in the scrollback.
+      try { s.fitAddonRef.current?.fit() } catch { /* ignore */ }
       s.dataHandlerRef.current?.flush()
       requestAnimationFrame(() => {
-        try { s.fitAddonRef.current?.fit() } catch { /* ignore */ }
         s.terminalRef.current?.focus()
       })
     }
