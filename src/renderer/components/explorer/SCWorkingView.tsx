@@ -25,7 +25,7 @@ export interface SCWorkingViewProps {
   isMerging: boolean
   hasConflicts: boolean
   isCommitting: boolean
-  onCommit: (message: string) => void
+  onCommit: (message: string, stageAll?: boolean) => void
   onCommitMerge: () => void
   onStage: (filePath: string) => void
   onStageAll: () => void
@@ -39,7 +39,7 @@ export interface SCWorkingViewProps {
   templateVars: TemplateVars
   agentPtyId?: string
   agentId?: string | null
-  onWritePrompt?: (builder: string, outputPath: string) => Promise<void>
+  onOpenCommandsEditor?: () => void
 }
 
 function StatusInfoContent({ syncStatus, branchStatus }: { syncStatus?: GitStatusResult | null; branchStatus?: BranchStatus }) {
@@ -95,12 +95,13 @@ function StatusInfo({ syncStatus, branchStatus }: { syncStatus?: GitStatusResult
   )
 }
 
-function BuiltInCommitArea({ isMerging, hasConflicts, isCommitting, onCommit, onCommitMerge }: {
+function BuiltInCommitArea({ isMerging, hasConflicts, isCommitting, onCommit, onCommitMerge, hasStagedFiles }: {
   isMerging: boolean
   hasConflicts: boolean
   isCommitting: boolean
-  onCommit: (message: string) => void
+  onCommit: (message: string, stageAll?: boolean) => void
   onCommitMerge: () => void
+  hasStagedFiles: boolean
 }) {
   const [showCommitDialog, setShowCommitDialog] = useState(false)
 
@@ -136,6 +137,7 @@ function BuiltInCommitArea({ isMerging, hasConflicts, isCommitting, onCommit, on
         <CommitMessageDialog
           onCommit={onCommit}
           onClose={() => setShowCommitDialog(false)}
+          hasStagedFiles={hasStagedFiles}
         />
       )}
     </div>
@@ -236,7 +238,7 @@ export function SCWorkingView({
   templateVars,
   agentPtyId,
   agentId,
-  onWritePrompt,
+  onOpenCommandsEditor,
 }: SCWorkingViewProps) {
   const hasChanges = gitStatus.length > 0
 
@@ -253,6 +255,7 @@ export function SCWorkingView({
           isCommitting={isCommitting}
           onCommit={onCommit}
           onCommitMerge={onCommitMerge}
+          hasStagedFiles={stagedFiles.length > 0}
         />
       )}
 
@@ -265,8 +268,8 @@ export function SCWorkingView({
         agentPtyId={agentPtyId}
         agentId={agentId}
         onGitStatusRefresh={onGitStatusRefresh}
-        onWritePrompt={onWritePrompt}
         onSwitchTab={onSwitchTab}
+        onOpenCommandsEditor={onOpenCommandsEditor}
       />
 
       {/* File list (staged + unstaged) */}
