@@ -117,11 +117,11 @@ test.describe.serial('Feature: Remove .claude/commands', () => {
     await expect(commitButton).toBeVisible()
     await commitButton.click()
 
-    // Wait a moment for the prompt to appear in the terminal
-    await page.waitForTimeout(1000)
-
+    // Wait for the prompt to appear in the terminal
     const terminalArea = page.locator('.xterm').first()
     await expect(terminalArea).toBeVisible()
+    // Wait for terminal content to update after the prompt is sent
+    await expect(page.locator('.xterm-rows')).toBeVisible()
 
     await screenshotElement(page, terminalArea, path.join(SCREENSHOTS, '03-inline-prompt.png'))
     steps.push({
