@@ -134,8 +134,8 @@ test.describe.serial('Feature: Review Links — Internal Diff View', () => {
     await scrollToVisible(fileLink)
     await fileLink.click()
 
-    // Wait for the file viewer to show the file
-    await page.waitForTimeout(500)
+    // Wait for the file viewer to show the file name in the toolbar
+    await expect(page.locator('text=ThemeContext.tsx')).toBeVisible({ timeout: 5000 })
 
     // Screenshot the full window to show both review panel and file viewer
     await page.screenshot({
