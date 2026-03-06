@@ -70,7 +70,8 @@ export function NewBranchView({
         // Check if this is a "branch already exists on remote" error
         if (pushResult.error?.startsWith('BRANCH_EXISTS:')) {
           const existingSession = sessions.find(
-            (s) => s.branch === branchName && s.repoId === repo.id && !s.isArchived
+            (s) => s.branch === branchName && !s.isArchived &&
+              (s.repoId === repo.id || s.directory.startsWith(repo.rootDir + '/'))
           )
           if (existingSession) {
             setExistingSessionId(existingSession.id)
