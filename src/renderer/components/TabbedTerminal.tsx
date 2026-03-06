@@ -112,7 +112,6 @@ interface TabbedTerminalProps {
   isActive: boolean
   agentCommand?: string
   agentEnv?: Record<string, string>
-  agentResumeCommand?: string
   isRestored?: boolean
   isolated: boolean
   repoRootDir?: string
@@ -178,10 +177,10 @@ function tabPanelClass(tabId: string, activeTabId: string): string {
 }
 
 /** Renders the terminal panels (Agent, Services, Docker, user tabs). */
-const TerminalPanels = React.memo(function TerminalPanels({ sessionId, cwd, isActive, activeTabId, agentCommand, agentEnv, agentInstalled, agentResumeCommand, isRestored, isolated, repoRootDir, servicesInfo, userTabs }: {
+const TerminalPanels = React.memo(function TerminalPanels({ sessionId, cwd, isActive, activeTabId, agentCommand, agentEnv, agentInstalled, isRestored, isolated, repoRootDir, servicesInfo, userTabs }: {
   sessionId: string; cwd: string; isActive: boolean; activeTabId: string
   agentCommand?: string; agentEnv?: Record<string, string>; agentInstalled: boolean
-  agentResumeCommand?: string; isRestored?: boolean
+  isRestored?: boolean
   isolated: boolean; repoRootDir?: string
   servicesInfo: ServicesInfo | null
   userTabs: TerminalTab[]
@@ -193,7 +192,7 @@ const TerminalPanels = React.memo(function TerminalPanels({ sessionId, cwd, isAc
           <Terminal
             sessionId={sessionId} cwd={cwd} command={agentCommand} env={agentEnv}
             isAgentTerminal={!!agentCommand} isActive={isActive && activeTabId === AGENT_TAB_ID}
-            agentNotInstalled={!!agentCommand && !agentInstalled} agentResumeCommand={agentResumeCommand}
+            agentNotInstalled={!!agentCommand && !agentInstalled}
             isRestored={isRestored} isolated={isolated}
             repoRootDir={repoRootDir}
           />
@@ -230,7 +229,7 @@ const TerminalPanels = React.memo(function TerminalPanels({ sessionId, cwd, isAc
   )
 })
 
-export default function TabbedTerminal({ sessionId, cwd, isActive, agentCommand, agentEnv, agentResumeCommand, isRestored, isolated, repoRootDir }: TabbedTerminalProps) {
+export default function TabbedTerminal({ sessionId, cwd, isActive, agentCommand, agentEnv, isRestored, isolated, repoRootDir }: TabbedTerminalProps) {
   // Targeted selector: only re-render when this session's terminalTabs change
   const terminalTabs = useSessionStore((state) => {
     const session = state.sessions.find((s) => s.id === sessionId)
@@ -403,7 +402,7 @@ export default function TabbedTerminal({ sessionId, cwd, isActive, agentCommand,
       <TerminalPanels
         sessionId={sessionId} cwd={cwd} isActive={isActive} activeTabId={activeTabId}
         agentCommand={agentCommand} agentEnv={agentEnv} agentInstalled={agentInstalled}
-        agentResumeCommand={agentResumeCommand} isRestored={isRestored}
+        isRestored={isRestored}
         isolated={isolated} repoRootDir={repoRootDir}
         servicesInfo={servicesInfo} userTabs={userTabs}
       />

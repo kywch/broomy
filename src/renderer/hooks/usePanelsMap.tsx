@@ -47,7 +47,6 @@ export interface PanelsMapConfig {
   fetchGitStatus: () => void | Promise<void>
   getAgentCommand: (session: Session) => string | undefined
   getAgentEnv: (session: Session) => Record<string, string> | undefined
-  getAgentResumeCommand: (session: Session) => string | undefined
   getRepoIsolation: (session: Session) => { isolated: boolean; repoRootDir?: string } | undefined
   globalPanelVisibility: Record<string, boolean>
   toggleGlobalPanel: (panelId: string) => void
@@ -201,7 +200,7 @@ export function usePanelsMap(config: PanelsMapConfig) {
     sessions, activeSessionId, activeSession,
     handleSelectSession, handleNewSession, removeSession, refreshPrStatus,
     archiveSession, unarchiveSession,
-    getAgentCommand, getAgentEnv, getAgentResumeCommand,
+    getAgentCommand, getAgentEnv,
     globalPanelVisibility, toggleGlobalPanel,
     repos,
   } = config
@@ -231,7 +230,6 @@ export function usePanelsMap(config: PanelsMapConfig) {
                 isActive={session.id === activeSessionId}
                 agentCommand={getAgentCommand(session)}
                 agentEnv={getAgentEnv(session)}
-                agentResumeCommand={getAgentResumeCommand(session)}
                 isRestored={session.isRestored}
                 isolated={repo?.isolated ?? false}
                 repoRootDir={repo?.rootDir}
@@ -244,7 +242,7 @@ export function usePanelsMap(config: PanelsMapConfig) {
         <WelcomeScreen onNewSession={handleNewSession} />
       )}
     </div>
-  ), [terminalSessionKey, activeSessionId, getAgentCommand, getAgentEnv, getAgentResumeCommand, handleNewSession, repos])
+  ), [terminalSessionKey, activeSessionId, getAgentCommand, getAgentEnv, handleNewSession, repos])
 
   const explorerPanel = useExplorerPanel(config)
   const fileViewerPanel = useFileViewerPanel(config)
