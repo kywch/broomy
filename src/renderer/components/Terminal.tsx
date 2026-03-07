@@ -25,7 +25,6 @@ interface TerminalProps {
   isAgentTerminal?: boolean
   isServicesTerminal?: boolean
   agentNotInstalled?: boolean
-  agentResumeCommand?: string
   isRestored?: boolean
   isolated?: boolean
   repoRootDir?: string
@@ -82,19 +81,19 @@ function AgentExitBanner({ exitInfo, onRestart }: { exitInfo: ExitInfo; onRestar
   )
 }
 
-export default function Terminal({ sessionId, cwd, command, env, isAgentTerminal = false, isServicesTerminal = false, agentNotInstalled = false, agentResumeCommand, isRestored, isolated, repoRootDir, storeSessionId, tabId }: TerminalProps) {
+export default function Terminal({ sessionId, cwd, command, env, isAgentTerminal = false, isServicesTerminal = false, agentNotInstalled = false, isRestored, isolated, repoRootDir, storeSessionId, tabId }: TerminalProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [restartKey, setRestartKey] = useState(0)
   const [resumeDismissed, setResumeDismissed] = useState(false)
 
-  const showResumeBanner = isAgentTerminal && isRestored && !!agentResumeCommand && !resumeDismissed && !agentNotInstalled
+  const showResumeBanner = isAgentTerminal && isRestored && !resumeDismissed && !agentNotInstalled
 
   const handleResume = useCallback(() => {
-    if (ptyIdRef.current && agentResumeCommand) {
-      void sendAgentPrompt(ptyIdRef.current, agentResumeCommand)
+    if (ptyIdRef.current) {
+      void sendAgentPrompt(ptyIdRef.current, '/resume')
     }
     setResumeDismissed(true)
-  }, [agentResumeCommand])
+  }, [])
 
   const config: TerminalConfig = {
     sessionId,
@@ -206,7 +205,7 @@ export default function Terminal({ sessionId, cwd, command, env, isAgentTerminal
           <span>
             Resume your previous conversation?{' '}
             <button className="underline hover:text-accent/80 font-medium" onClick={handleResume}>
-              Run {agentResumeCommand} &rarr;
+              Run /resume &rarr;
             </button>
           </span>
           <button className="ml-2 hover:text-accent/80" onClick={() => setResumeDismissed(true)} aria-label="Dismiss">

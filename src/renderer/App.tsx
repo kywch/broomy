@@ -144,7 +144,7 @@ function AppContent() {
     togglePanel, toggleGlobalPanel, setSidebarWidth, setToolbarPanels,
     selectFile, setExplorerFilter, setFileViewerPosition, updateLayoutSize,
     markSessionRead, recordPushToMain, clearPushToMain, markHasHadCommits,
-    updateBranchStatus, updatePrState, archiveSession, unarchiveSession, setPanelVisibility, updateSessionBranch,
+    updateBranchStatus, updatePrState, updateReviewStatus, archiveSession, unarchiveSession, setPanelVisibility, updateSessionBranch,
     closeCommandsEditor,
   } = useSessionStore()
 
@@ -195,6 +195,7 @@ function AppContent() {
     checkGhAvailability, checkGitAvailability,
     switchProfile,
     markSessionRead,
+    updateReviewStatus,
   })
 
   // App callbacks hook
@@ -206,7 +207,6 @@ function AppContent() {
     refreshPrStatus,
     getAgentCommand,
     getAgentEnv,
-    getAgentResumeCommand,
     getRepoIsolation,
     handleLayoutSizeChange,
     handleFileViewerPositionChange,
@@ -265,7 +265,7 @@ function AppContent() {
     removeSession: (id, deleteWorktree) => { handleDeleteSession(id, deleteWorktree) },
     refreshPrStatus, archiveSession, unarchiveSession,
     handleToggleFileViewer, handleFileViewerPositionChange,
-    fetchGitStatus, getAgentCommand, getAgentEnv, getAgentResumeCommand, getRepoIsolation,
+    fetchGitStatus, getAgentCommand, getAgentEnv, getRepoIsolation,
     globalPanelVisibility, toggleGlobalPanel, selectFile, setExplorerFilter,
     recordPushToMain, clearPushToMain, updatePrState,
     setPanelVisibility, setToolbarPanels, closeCommandsEditor, repos,
