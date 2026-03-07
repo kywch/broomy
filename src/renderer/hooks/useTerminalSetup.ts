@@ -357,6 +357,11 @@ export function useTerminalSetup(
           terminal.write(`The process was killed (SIGKILL).\r\n`)
           s.setExitInfo({ code: 137, message: 'Process killed (SIGKILL)' })
         }
+      } else if (isAgent) {
+        s.setExitInfo({
+          code: exitCode,
+          message: exitCode === 0 ? 'Agent process has exited.' : `Agent process exited with code ${exitCode}.`,
+        })
       }
       if (isAgent && s.sessionIdRef.current) {
         s.lastStatusRef.current = 'idle'
