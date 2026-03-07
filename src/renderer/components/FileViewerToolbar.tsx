@@ -12,7 +12,7 @@ async function buildPrFileUrl(prUrl: string, relativePath: string): Promise<stri
   const encoded = new TextEncoder().encode(relativePath)
   const hashBuffer = await crypto.subtle.digest('SHA-256', encoded)
   const hashHex = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('')
-  return `${prUrl}/files?file-filters[]=${encodeURIComponent(relativePath)}#diff-${hashHex}`
+  return `${prUrl}/files#diff-${hashHex}`
 }
 
 interface FileViewerToolbarProps {
@@ -130,7 +130,7 @@ export default function FileViewerToolbar({
         {handleOpenOnGithub && viewMode === 'diff' && (
           <button
             onClick={() => void handleOpenOnGithub()}
-            className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded bg-bg-tertiary border border-border text-text-primary hover:bg-bg-tertiary/80 hover:border-accent/50 transition-colors"
+            className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded bg-bg-tertiary border border-border text-text-primary hover:bg-bg-tertiary/80 hover:border-accent/50 transition-colors whitespace-nowrap shrink-0"
             title="Open PR diff on GitHub to add comments"
           >
             <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
