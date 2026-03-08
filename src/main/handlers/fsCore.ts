@@ -208,9 +208,9 @@ async function handleReadFileBase64(ctx: HandlerContext, filePath: string) {
   return buffer.toString('base64')
 }
 
-const MAX_WATCHERS = 128
+const MAX_WATCHERS = 8
 
-function handleWatch(ctx: HandlerContext, _event: IpcMainInvokeEvent, id: string, dirPath: string) {
+function handleWatch(ctx: HandlerContext, _event: IpcMainInvokeEvent, id: string, watchPath: string) {
   if (ctx.isE2ETest) {
     return { success: true }
   }
@@ -230,9 +230,7 @@ function handleWatch(ctx: HandlerContext, _event: IpcMainInvokeEvent, id: string
   }
 
   try {
-    const watcher = watch(dirPath, { recursive: true }, (eventType, filename) => {
-      if (filename?.startsWith('.git')) return
-
+    const watcher = watch(watchPath, (eventType, filename) => {
       const ownerWindow = ctx.watcherOwnerWindows.get(id) || ctx.mainWindow
       if (ownerWindow && !ownerWindow.isDestroyed()) {
         ownerWindow.webContents.send(`fs:change:${id}`, { eventType, filename })
@@ -280,6 +278,6 @@ export function register(ipcMain: IpcMain, ctx: HandlerContext): void {
   ipcMain.handle('fs:rename', (_event, oldPath: string, newPath: string) => handleRename(ctx, oldPath, newPath))
   ipcMain.handle('fs:createFile', (_event, filePath: string) => handleCreateFile(ctx, filePath))
   ipcMain.handle('fs:readFileBase64', (_event, filePath: string) => handleReadFileBase64(ctx, filePath))
-  ipcMain.handle('fs:watch', (_event, id: string, dirPath: string) => handleWatch(ctx, _event, id, dirPath))
+  ipcMain.handle('fs:watch', (_event, id: string, watchPath: string) => handleWatch(ctx, _event, id, watchPath))
   ipcMain.handle('fs:unwatch', (_event, id: string) => handleUnwatch(ctx, id))
 }

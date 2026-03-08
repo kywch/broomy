@@ -469,7 +469,7 @@ describe('fsCore handlers', () => {
     it('sends fs:change events through watcher callback', () => {
       let watchCallback: (eventType: string, filename: string | null) => void = () => {}
       const mockWatcher = { on: vi.fn(), close: vi.fn() }
-      vi.mocked(watch).mockImplementation(((_path: string, _opts: unknown, cb: unknown) => {
+      vi.mocked(watch).mockImplementation(((_path: string, cb: unknown) => {
         watchCallback = cb as (eventType: string, filename: string | null) => void
         return mockWatcher as never
       }) as unknown as typeof watch)
@@ -487,30 +487,10 @@ describe('fsCore handlers', () => {
       expect(mockSend).toHaveBeenCalledWith('fs:change:watch-1', { eventType: 'change', filename: 'src/file.ts' })
     })
 
-    it('ignores .git file changes in watcher callback', () => {
-      let watchCallback: (eventType: string, filename: string | null) => void = () => {}
-      const mockWatcher = { on: vi.fn(), close: vi.fn() }
-      vi.mocked(watch).mockImplementation(((_path: string, _opts: unknown, cb: unknown) => {
-        watchCallback = cb as (eventType: string, filename: string | null) => void
-        return mockWatcher as never
-      }) as unknown as typeof watch)
-      const mockSend = vi.fn()
-      const mockWindow = { isDestroyed: () => false, webContents: { send: mockSend } }
-      vi.mocked(BrowserWindow.fromWebContents).mockReturnValue(mockWindow as never)
-
-      const ctx = createMockCtx()
-      const handlers = setupHandlers(ctx)
-      const event = { sender: {} }
-      handlers['fs:watch'](event, 'watch-1', '/dir')
-
-      watchCallback('change', '.git/HEAD')
-      expect(mockSend).not.toHaveBeenCalled()
-    })
-
     it('uses mainWindow when owner window is not available', () => {
       let watchCallback: (eventType: string, filename: string | null) => void = () => {}
       const mockWatcher = { on: vi.fn(), close: vi.fn() }
-      vi.mocked(watch).mockImplementation(((_path: string, _opts: unknown, cb: unknown) => {
+      vi.mocked(watch).mockImplementation(((_path: string, cb: unknown) => {
         watchCallback = cb as (eventType: string, filename: string | null) => void
         return mockWatcher as never
       }) as unknown as typeof watch)

@@ -37,12 +37,11 @@ export function useCommandsConfig(directory: string | undefined): {
 
     void load()
 
-    // Watch for changes to commands.json
+    // Watch the commands.json file directly for external edits
     const watcherId = `commands-config-${directory}`
-    const broomyDir = `${directory}/.broomy`
-    void window.fs.watch(watcherId, broomyDir)
-    const removeListener = window.fs.onChange(watcherId, (event: { eventType: string; filename: string | null }) => {
-      if (event.filename && event.filename !== 'commands.json') return
+    const commandsFile = `${directory}/.broomy/commands.json`
+    void window.fs.watch(watcherId, commandsFile)
+    const removeListener = window.fs.onChange(watcherId, () => {
       void load()
     })
 
