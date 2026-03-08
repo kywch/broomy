@@ -17,11 +17,32 @@ import { test, expect, _electron as electron, ElectronApplication, Page } from '
 import { execSync } from 'child_process'
 import path from 'path'
 import { fileURLToPath } from 'url'
+import { dockerArgs, isDocker } from './electron-launch-args'
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
 let electronApp: ElectronApplication
 let page: Page
+
+/**
+ * Take a diagnostic screenshot. Uses Electron's native capturePage API in Docker
+ * (page.screenshot() hangs when WebGL terminal canvas is actively rendering).
+ */
+async function diagnosticScreenshot(app: ElectronApplication, p: Page, filePath: string) {
+  if (isDocker) {
+    const fs = await import('fs')
+    fs.mkdirSync(path.dirname(filePath), { recursive: true })
+    await p.evaluate(() => new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve, 150))))
+    const base64 = await app.evaluate(async ({ BrowserWindow }) => {
+      const win = BrowserWindow.getAllWindows()[0]
+      const image = await win.webContents.capturePage()
+      return image.toPNG().toString('base64')
+    })
+    fs.writeFileSync(filePath, Buffer.from(base64, 'base64'))
+  } else {
+    await p.screenshot({ path: filePath })
+  }
+}
 
 /**
  * Get terminal buffer content from the buffer registry.
@@ -66,7 +87,7 @@ test.beforeAll(async () => {
   })
 
   electronApp = await electron.launch({
-    args: [path.join(__dirname, '..', 'out', 'main', 'index.js')],
+    args: [...dockerArgs, path.join(__dirname, '..', 'out', 'main', 'index.js')],
     env: {
       ...process.env,
       NODE_ENV: 'production',
@@ -126,7 +147,7 @@ test.describe('Source Control with Real Git', () => {
     await scButton.click()
 
     // Take screenshot of source control with real git data
-    await page.screenshot({ path: 'test-results/real-source-control.png' })
+    await diagnosticScreenshot(electronApp, page, 'test-results/real-source-control.png')
   })
 
   test('should show real file tree from disk', async () => {
@@ -142,7 +163,7 @@ test.describe('Source Control with Real Git', () => {
     await expect(explorerPanel.locator('text=README.md').first()).toBeVisible()
 
     // Take screenshot of real file tree
-    await page.screenshot({ path: 'test-results/real-file-tree.png' })
+    await diagnosticScreenshot(electronApp, page, 'test-results/real-file-tree.png')
   })
 
   test('should show default action buttons (no commands.json)', async () => {
@@ -157,7 +178,7 @@ test.describe('Source Control with Real Git', () => {
     // What appears depends on the real git state
 
     // Take screenshot to see what buttons appear
-    await page.screenshot({ path: 'test-results/real-action-buttons.png' })
+    await diagnosticScreenshot(electronApp, page, 'test-results/real-action-buttons.png')
   })
 
   test('should close explorer', async () => {
@@ -191,7 +212,7 @@ test.describe('Review Tab with Real Files', () => {
     await expect(explorerPanel.locator('text=dark mode').first()).toBeVisible()
 
     // Take screenshot
-    await page.screenshot({ path: 'test-results/real-review-tab.png' })
+    await diagnosticScreenshot(electronApp, page, 'test-results/real-review-tab.png')
   })
 
   test('should show collapsible sections from real markdown', async () => {
@@ -217,7 +238,7 @@ test.describe('Review Tab with Real Files', () => {
     await expect(explorerPanel.locator('text=Theme context').first()).toBeVisible({ timeout: 5000 })
 
     // Take screenshot of review with sections
-    await page.screenshot({ path: 'test-results/real-review-sections.png' })
+    await diagnosticScreenshot(electronApp, page, 'test-results/real-review-sections.png')
 
     // Close explorer
     const explorerBtn = page.locator('button[title*="Explorer"]')
@@ -246,7 +267,7 @@ test.describe('Session Creation', () => {
     await expect(page.locator('text=Shell Only')).toBeVisible()
 
     // Take screenshot
-    await page.screenshot({ path: 'test-results/agent-picker.png' })
+    await diagnosticScreenshot(electronApp, page, 'test-results/agent-picker.png')
   })
 
   test('should create session with Shell Only', async () => {
@@ -264,7 +285,7 @@ test.describe('Session Creation', () => {
     expect(finalCount).toBeGreaterThan(initialCount)
 
     // Take screenshot of new session
-    await page.screenshot({ path: 'test-results/session-created.png' })
+    await diagnosticScreenshot(electronApp, page, 'test-results/session-created.png')
   })
 
   test('should switch back to broomy for remaining tests', async () => {
@@ -284,7 +305,7 @@ test.describe('Terminal Tab Switching', () => {
     await expect.poll(() => getTerminalContent(page, 'agent'), { timeout: 15000 })
       .toContain('FAKE_CLAUDE_READY')
 
-    await page.screenshot({ path: 'test-results/agent-terminal.png' })
+    await diagnosticScreenshot(electronApp, page, 'test-results/agent-terminal.png')
   })
 
   test('should add user terminal and show shell prompt', async () => {
@@ -298,7 +319,7 @@ test.describe('Terminal Tab Switching', () => {
     // Agent tab should no longer be active
     expect(await isTabActive('Agent')).toBe(false)
 
-    await page.screenshot({ path: 'test-results/user-terminal.png' })
+    await diagnosticScreenshot(electronApp, page, 'test-results/user-terminal.png')
   })
 
   test('should switch between Agent and user tabs preserving content', async () => {
@@ -365,7 +386,7 @@ test.describe('Agent Terminal', () => {
     await expect.poll(() => getTerminalContent(page, 'agent'), { timeout: 5000 })
       .toContain(marker)
 
-    await page.screenshot({ path: 'test-results/agent-input.png' })
+    await diagnosticScreenshot(electronApp, page, 'test-results/agent-input.png')
   })
 })
 
@@ -393,7 +414,7 @@ test.describe('File Viewer', () => {
     // Should show the filename
     await expect(fileViewer.locator('text=README.md').first()).toBeVisible()
 
-    await page.screenshot({ path: 'test-results/real-file-viewer.png' })
+    await diagnosticScreenshot(electronApp, page, 'test-results/real-file-viewer.png')
 
     // Close file viewer
     await page.keyboard.press('Meta+3')
@@ -417,7 +438,7 @@ test.describe('Full App State', () => {
     const scTab = explorerPanel.locator('button[title="Source Control"]')
     await scTab.click()
 
-    await page.screenshot({ path: 'test-results/full-app.png' })
+    await diagnosticScreenshot(electronApp, page, 'test-results/full-app.png')
 
     // Close explorer
     await explorerBtn.click()

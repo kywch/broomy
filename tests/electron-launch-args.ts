@@ -4,6 +4,6 @@
  */
 import fs from 'fs'
 
-const isDocker = fs.existsSync('/.dockerenv') || process.env.DOCKER === 'true'
+export const isDocker = fs.existsSync('/.dockerenv') || process.env.DOCKER === 'true'
 
 export const dockerArgs: string[] = isDocker ? ['--no-sandbox', '--disable-gpu'] : []
