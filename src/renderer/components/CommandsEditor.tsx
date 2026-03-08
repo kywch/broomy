@@ -16,11 +16,17 @@ import {
   removeLegacyBroomyGitignore,
   type ActionDefinition,
 } from '../utils/commandsConfig'
+import { DialogErrorBanner } from './ErrorBanner'
 import { ShowWhenPicker } from './ShowWhenPicker'
 import { PromptVariants } from './PromptVariants'
 import { useAgentStore } from '../store/agents'
 
 const STYLE_OPTIONS = ['primary', 'secondary', 'accent', 'danger'] as const
+const SURFACE_OPTIONS = [
+  { value: 'source-control', label: 'Source Control' },
+  { value: 'review', label: 'Review' },
+] as const
+
 const SWITCH_TAB_OPTIONS = [
   { value: '', label: 'None' },
   { value: 'source-control', label: 'Source Control' },
@@ -29,6 +35,13 @@ const SWITCH_TAB_OPTIONS = [
   { value: 'recent', label: 'Recent Files' },
   { value: 'review', label: 'Review' },
 ] as const
+
+/** Normalize the surface field to a string array for the UI. */
+function normalizeSurface(surface: string | string[] | undefined): string[] {
+  if (!surface) return ['source-control']
+  if (Array.isArray(surface)) return surface
+  return [surface]
+}
 
 interface CommandsEditorProps {
   directory: string
@@ -54,6 +67,7 @@ export function CommandsEditor({ directory, onClose }: CommandsEditorProps) {
   const [saving, setSaving] = useState(false)
   const [creating, setCreating] = useState(false)
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const agents = useAgentStore((s) => s.agents)
 
   // Agent types from configured agents + any types already referenced in actions
@@ -69,13 +83,18 @@ export function CommandsEditor({ directory, onClose }: CommandsEditorProps) {
   }, [agents, actions])
 
   const load = useCallback(async () => {
-    const config = await loadCommandsConfig(directory)
-    if (config) {
-      setActions(config.actions)
-      setExists(true)
-    } else {
+    setLoadError(null)
+    const result = await loadCommandsConfig(directory)
+    if (result === null) {
       setActions(null)
       setExists(false)
+    } else if (!result.ok) {
+      setActions(null)
+      setExists(true)
+      setLoadError(result.error)
+    } else {
+      setActions(result.config.actions)
+      setExists(true)
     }
     setIsDirty(false)
   }, [directory])
@@ -145,6 +164,27 @@ export function CommandsEditor({ directory, onClose }: CommandsEditorProps) {
     return (
       <div className="h-full flex items-center justify-center text-text-secondary text-sm">
         Loading...
+      </div>
+    )
+  }
+
+  if (loadError) {
+    return (
+      <div className="h-full flex flex-col">
+        <EditorHeader title="Commands" onClose={onClose} isDirty={false} />
+        <div className="flex-1 p-4 space-y-4">
+          <DialogErrorBanner error={loadError} onDismiss={() => setLoadError(null)} />
+          <p className="text-sm text-text-secondary">
+            Fix the errors in <code className="font-mono bg-bg-tertiary px-1 rounded">.broomy/commands.json</code> and reload.
+          </p>
+          <button
+            onClick={() => void load()}
+            className="px-4 py-2 text-sm rounded bg-accent text-white hover:bg-accent/80 transition-colors"
+            data-testid="reload-commands"
+          >
+            Reload
+          </button>
+        </div>
       </div>
     )
   }
@@ -362,6 +402,32 @@ function ActionCard({
                 <option key={s} value={s}>{s}</option>
               ))}
             </select>
+          </Field>
+
+          <Field label="Surface" hint="Where this action appears (defaults to Source Control)">
+            <div className="flex gap-2">
+              {SURFACE_OPTIONS.map((opt) => {
+                const surfaces = normalizeSurface(action.surface)
+                const checked = surfaces.includes(opt.value)
+                return (
+                  <label key={opt.value} className="flex items-center gap-1.5 text-sm text-text-secondary cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => {
+                        const next = checked
+                          ? surfaces.filter((s) => s !== opt.value)
+                          : [...surfaces, opt.value]
+                        onUpdate({ surface: next.length === 0 ? undefined : next.length === 1 ? next[0] : next })
+                      }}
+                      className="accent-accent"
+                      data-testid={`action-surface-${opt.value}-${action.id}`}
+                    />
+                    {opt.label}
+                  </label>
+                )
+              })}
+            </div>
           </Field>
 
           <Field label="Switch Tab" hint="Navigate to an explorer tab after running this action">

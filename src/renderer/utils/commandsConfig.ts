@@ -126,21 +126,131 @@ export function matchesSurface(action: ActionDefinition, surface: string): boole
   return action.surface === surface
 }
 
+// --- Validation ---
+
+const VALID_TYPES = ['agent', 'shell'] as const
+const VALID_STYLES = ['primary', 'secondary', 'accent', 'danger'] as const
+
+function validateSurface(surface: unknown, label: string, errors: string[]): void {
+  if (surface === undefined) return
+  if (typeof surface === 'string') return
+  if (Array.isArray(surface)) {
+    if (surface.some((v: unknown) => typeof v !== 'string')) {
+      errors.push(`${label}: "surface" entries must be strings.`)
+    }
+    return
+  }
+  errors.push(`${label}: "surface" must be a string or array of strings.`)
+}
+
+function actionLabel(action: Record<string, unknown>, index: number): string {
+  const id = typeof action.id === 'string' ? action.id : '?'
+  return `Action ${index + 1} (${id})`
+}
+
+function validateAction(action: Record<string, unknown>, index: number, errors: string[]): void {
+  const label = actionLabel(action, index)
+
+  if (typeof action.id !== 'string' || !action.id) {
+    errors.push(`Action ${index + 1}: "id" must be a non-empty string.`)
+  }
+  if (typeof action.label !== 'string' || !action.label) {
+    errors.push(`${label}: "label" must be a non-empty string.`)
+  }
+  if (!VALID_TYPES.includes(action.type as typeof VALID_TYPES[number])) {
+    errors.push(`${label}: "type" must be "agent" or "shell".`)
+  }
+  if (action.type === 'agent' && action.prompt !== undefined && typeof action.prompt !== 'string') {
+    errors.push(`${label}: "prompt" must be a string.`)
+  }
+  if (action.type === 'shell' && action.command !== undefined && typeof action.command !== 'string') {
+    errors.push(`${label}: "command" must be a string.`)
+  }
+  if (!Array.isArray(action.showWhen)) {
+    errors.push(`${label}: "showWhen" must be an array of strings.`)
+  } else if (action.showWhen.some((v: unknown) => typeof v !== 'string')) {
+    errors.push(`${label}: "showWhen" entries must be strings.`)
+  }
+  if (action.style !== undefined && !VALID_STYLES.includes(action.style as typeof VALID_STYLES[number])) {
+    errors.push(`${label}: "style" must be one of: ${VALID_STYLES.join(', ')}.`)
+  }
+  validateSurface(action.surface, label, errors)
+  if (action.switchTab !== undefined && typeof action.switchTab !== 'string') {
+    errors.push(`${label}: "switchTab" must be a string.`)
+  }
+  if (action.agents !== undefined) {
+    if (typeof action.agents !== 'object' || action.agents === null || Array.isArray(action.agents)) {
+      errors.push(`${label}: "agents" must be an object.`)
+    }
+  }
+}
+
+/**
+ * Validate a parsed commands config and return a list of errors.
+ * Returns an empty array if the config is valid.
+ */
+export function validateCommandsConfig(config: unknown): string[] {
+  const errors: string[] = []
+
+  if (typeof config !== 'object' || config === null || Array.isArray(config)) {
+    errors.push('Config must be a JSON object with "version" and "actions".')
+    return errors
+  }
+
+  const obj = config as Record<string, unknown>
+
+  if (typeof obj.version !== 'number') {
+    errors.push('"version" must be a number.')
+  }
+
+  if (!Array.isArray(obj.actions)) {
+    errors.push('"actions" must be an array.')
+    return errors
+  }
+
+  for (let i = 0; i < obj.actions.length; i++) {
+    const raw = obj.actions[i]
+    if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
+      errors.push(`Action ${i + 1}: must be an object.`)
+      continue
+    }
+    validateAction(raw as Record<string, unknown>, i, errors)
+  }
+
+  return errors
+}
+
 // --- Loading ---
 
 export function commandsConfigPath(directory: string): string {
   return `${directory}/.broomy/commands.json`
 }
 
-export async function loadCommandsConfig(directory: string): Promise<CommandsConfig | null> {
+export type LoadResult =
+  | { ok: true; config: CommandsConfig }
+  | { ok: false; error: string }
+
+export async function loadCommandsConfig(directory: string): Promise<LoadResult | null> {
   try {
     const path = commandsConfigPath(directory)
     const exists = await window.fs.exists(path)
     if (!exists) return null
 
     const content = await window.fs.readFile(path)
-    const config = JSON.parse(content) as CommandsConfig
-    if (!config.version || !Array.isArray(config.actions)) return null
+
+    let parsed: unknown
+    try {
+      parsed = JSON.parse(content)
+    } catch (e) {
+      return { ok: false, error: `Invalid JSON: ${e instanceof Error ? e.message : String(e)}` }
+    }
+
+    const validationErrors = validateCommandsConfig(parsed)
+    if (validationErrors.length > 0) {
+      return { ok: false, error: `Invalid commands.json:\n${validationErrors.join('\n')}` }
+    }
+
+    const config = parsed as CommandsConfig
 
     // Migrate: strip agent overrides that have no prompt (e.g. legacy skill-only entries)
     for (const action of config.actions) {
@@ -152,7 +262,7 @@ export async function loadCommandsConfig(directory: string): Promise<CommandsCon
       }
     }
 
-    return config
+    return { ok: true, config }
   } catch {
     return null
   }

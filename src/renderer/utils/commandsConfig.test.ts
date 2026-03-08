@@ -13,6 +13,7 @@ import {
   matchesSurface,
   checkLegacyBroomyGitignore,
   removeLegacyBroomyGitignore,
+  validateCommandsConfig,
 } from './commandsConfig'
 import type { ActionDefinition } from './commandsConfig'
 import type { ConditionState, TemplateVars } from './commandsConfig'
@@ -96,23 +97,37 @@ describe('loadCommandsConfig', () => {
     vi.mocked(window.fs.readFile).mockResolvedValue(JSON.stringify(config))
 
     const result = await loadCommandsConfig('/repo')
-    expect(result).toEqual(config)
+    expect(result).toEqual({ ok: true, config })
   })
 
-  it('returns null for invalid config (missing version)', async () => {
+  it('returns error for invalid config (missing version)', async () => {
     vi.mocked(window.fs.exists).mockResolvedValue(true)
     vi.mocked(window.fs.readFile).mockResolvedValue(JSON.stringify({ actions: [] }))
 
     const result = await loadCommandsConfig('/repo')
-    expect(result).toBeNull()
+    expect(result).not.toBeNull()
+    expect(result!.ok).toBe(false)
+    if (!result!.ok) expect(result!.error).toContain('"version"')
   })
 
-  it('returns null for invalid config (missing actions array)', async () => {
+  it('returns error for invalid config (missing actions array)', async () => {
     vi.mocked(window.fs.exists).mockResolvedValue(true)
     vi.mocked(window.fs.readFile).mockResolvedValue(JSON.stringify({ version: 1 }))
 
     const result = await loadCommandsConfig('/repo')
-    expect(result).toBeNull()
+    expect(result).not.toBeNull()
+    expect(result!.ok).toBe(false)
+    if (!result!.ok) expect(result!.error).toContain('"actions"')
+  })
+
+  it('returns error for invalid JSON', async () => {
+    vi.mocked(window.fs.exists).mockResolvedValue(true)
+    vi.mocked(window.fs.readFile).mockResolvedValue('not valid json {{{')
+
+    const result = await loadCommandsConfig('/repo')
+    expect(result).not.toBeNull()
+    expect(result!.ok).toBe(false)
+    if (!result!.ok) expect(result!.error).toContain('Invalid JSON')
   })
 
   it('strips agent overrides with no prompt (legacy skill-only entries)', async () => {
@@ -130,8 +145,11 @@ describe('loadCommandsConfig', () => {
     vi.mocked(window.fs.readFile).mockResolvedValue(JSON.stringify(config))
 
     const result = await loadCommandsConfig('/repo')
-    // claude override (skill-only, no prompt) should be stripped
-    expect(result!.actions[0].agents).toEqual({ aider: { prompt: 'aider prompt' } })
+    expect(result!.ok).toBe(true)
+    if (result!.ok) {
+      // claude override (skill-only, no prompt) should be stripped
+      expect(result!.config.actions[0].agents).toEqual({ aider: { prompt: 'aider prompt' } })
+    }
   })
 
   it('removes agents field entirely when all overrides are skill-only', async () => {
@@ -148,7 +166,10 @@ describe('loadCommandsConfig', () => {
     vi.mocked(window.fs.readFile).mockResolvedValue(JSON.stringify(config))
 
     const result = await loadCommandsConfig('/repo')
-    expect(result!.actions[0].agents).toBeUndefined()
+    expect(result!.ok).toBe(true)
+    if (result!.ok) {
+      expect(result!.config.actions[0].agents).toBeUndefined()
+    }
   })
 
   it('returns null on read error', async () => {
@@ -223,6 +244,82 @@ describe('getDefaultCommandsConfig', () => {
     expect(config.version).toBe(1)
     expect(config.actions.length).toBeGreaterThan(0)
     expect(config.actions.every(a => a.id && a.label && a.type)).toBe(true)
+  })
+})
+
+describe('validateCommandsConfig', () => {
+  it('returns empty array for valid config', () => {
+    expect(validateCommandsConfig({
+      version: 1,
+      actions: [{ id: 'test', label: 'Test', type: 'agent', showWhen: [] }],
+    })).toEqual([])
+  })
+
+  it('catches missing version', () => {
+    const errors = validateCommandsConfig({ actions: [] })
+    expect(errors.some(e => e.includes('"version"'))).toBe(true)
+  })
+
+  it('catches missing actions', () => {
+    const errors = validateCommandsConfig({ version: 1 })
+    expect(errors.some(e => e.includes('"actions"'))).toBe(true)
+  })
+
+  it('catches non-object config', () => {
+    expect(validateCommandsConfig('string').length).toBeGreaterThan(0)
+    expect(validateCommandsConfig(null).length).toBeGreaterThan(0)
+    expect(validateCommandsConfig([]).length).toBeGreaterThan(0)
+  })
+
+  it('catches invalid action type', () => {
+    const errors = validateCommandsConfig({
+      version: 1,
+      actions: [{ id: 'test', label: 'Test', type: 'invalid', showWhen: [] }],
+    })
+    expect(errors.some(e => e.includes('"type"'))).toBe(true)
+  })
+
+  it('catches invalid style', () => {
+    const errors = validateCommandsConfig({
+      version: 1,
+      actions: [{ id: 'test', label: 'Test', type: 'agent', showWhen: [], style: 'nope' }],
+    })
+    expect(errors.some(e => e.includes('"style"'))).toBe(true)
+  })
+
+  it('catches invalid surface type', () => {
+    const errors = validateCommandsConfig({
+      version: 1,
+      actions: [{ id: 'test', label: 'Test', type: 'agent', showWhen: [], surface: 123 }],
+    })
+    expect(errors.some(e => e.includes('"surface"'))).toBe(true)
+  })
+
+  it('accepts valid surface as string or array', () => {
+    expect(validateCommandsConfig({
+      version: 1,
+      actions: [{ id: 'test', label: 'Test', type: 'agent', showWhen: [], surface: 'review' }],
+    })).toEqual([])
+    expect(validateCommandsConfig({
+      version: 1,
+      actions: [{ id: 'test', label: 'Test', type: 'agent', showWhen: [], surface: ['source-control', 'review'] }],
+    })).toEqual([])
+  })
+
+  it('catches missing action id', () => {
+    const errors = validateCommandsConfig({
+      version: 1,
+      actions: [{ label: 'Test', type: 'agent', showWhen: [] }],
+    })
+    expect(errors.some(e => e.includes('"id"'))).toBe(true)
+  })
+
+  it('catches non-array showWhen', () => {
+    const errors = validateCommandsConfig({
+      version: 1,
+      actions: [{ id: 'test', label: 'Test', type: 'agent', showWhen: 'oops' }],
+    })
+    expect(errors.some(e => e.includes('"showWhen"'))).toBe(true)
   })
 })
 
