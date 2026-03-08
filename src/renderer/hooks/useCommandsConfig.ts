@@ -10,16 +10,19 @@ export function useCommandsConfig(directory: string | undefined): {
   config: CommandsConfig | null
   loading: boolean
   exists: boolean
+  error: string | null
 } {
   const [config, setConfig] = useState<CommandsConfig | null>(null)
   const [loading, setLoading] = useState(true)
   const [exists, setExists] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     if (!directory) {
       setConfig(null)
       setLoading(false)
       setExists(false)
+      setError(null)
       return
     }
 
@@ -27,10 +30,21 @@ export function useCommandsConfig(directory: string | undefined): {
 
     async function load() {
       setLoading(true)
-      const loaded = await loadCommandsConfig(directory!)
+      const result = await loadCommandsConfig(directory!)
       if (!cancelled) {
-        setConfig(loaded)
-        setExists(loaded !== null)
+        if (result === null) {
+          setConfig(null)
+          setExists(false)
+          setError(null)
+        } else if (!result.ok) {
+          setConfig(null)
+          setExists(true)
+          setError(result.error)
+        } else {
+          setConfig(result.config)
+          setExists(true)
+          setError(null)
+        }
         setLoading(false)
       }
     }
@@ -53,5 +67,5 @@ export function useCommandsConfig(directory: string | undefined): {
     }
   }, [directory])
 
-  return { config, loading, exists }
+  return { config, loading, exists, error }
 }

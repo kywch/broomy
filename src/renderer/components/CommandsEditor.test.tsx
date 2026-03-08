@@ -171,6 +171,74 @@ describe('CommandsEditor', () => {
     })
   })
 
+  describe('validation error state', () => {
+    it('shows error banner when commands.json has invalid JSON', async () => {
+      vi.mocked(window.fs.exists).mockResolvedValue(true)
+      vi.mocked(window.fs.readFile).mockResolvedValue('not valid json {{{')
+      render(<CommandsEditor directory="/test/repo" onClose={vi.fn()} />)
+      await waitFor(() => {
+        // humanizeError transforms "Invalid JSON" to a user-friendly message
+        expect(screen.getByText(/corrupt|restored/i)).toBeTruthy()
+      })
+    })
+
+    it('shows error banner when commands.json fails validation', async () => {
+      vi.mocked(window.fs.exists).mockResolvedValue(true)
+      vi.mocked(window.fs.readFile).mockResolvedValue(JSON.stringify({ version: 1 }))
+      render(<CommandsEditor directory="/test/repo" onClose={vi.fn()} />)
+      await waitFor(() => {
+        // humanizeError transforms the validation error message
+        expect(screen.getByText(/corrupt|restored|"actions"/i)).toBeTruthy()
+      })
+    })
+
+    it('shows reload button on error', async () => {
+      vi.mocked(window.fs.exists).mockResolvedValue(true)
+      vi.mocked(window.fs.readFile).mockResolvedValue('bad json')
+      render(<CommandsEditor directory="/test/repo" onClose={vi.fn()} />)
+      await waitFor(() => {
+        expect(screen.getByTestId('reload-commands')).toBeTruthy()
+      })
+    })
+  })
+
+  describe('surface field', () => {
+    it('shows surface checkboxes when action is expanded', async () => {
+      mockExistingConfig()
+      render(<CommandsEditor directory="/test/repo" onClose={vi.fn()} />)
+      await waitFor(() => {
+        expect(screen.getByTestId('action-header-action-1')).toBeTruthy()
+      })
+      fireEvent.click(screen.getByTestId('action-header-action-1'))
+      expect(screen.getByTestId('action-surface-source-control-action-1')).toBeTruthy()
+      expect(screen.getByTestId('action-surface-review-action-1')).toBeTruthy()
+    })
+
+    it('defaults to source-control checked', async () => {
+      mockExistingConfig()
+      render(<CommandsEditor directory="/test/repo" onClose={vi.fn()} />)
+      await waitFor(() => {
+        expect(screen.getByTestId('action-header-action-1')).toBeTruthy()
+      })
+      fireEvent.click(screen.getByTestId('action-header-action-1'))
+      const sc = screen.getByTestId<HTMLInputElement>('action-surface-source-control-action-1')
+      const review = screen.getByTestId<HTMLInputElement>('action-surface-review-action-1')
+      expect(sc.checked).toBe(true)
+      expect(review.checked).toBe(false)
+    })
+
+    it('enables save when surface is changed', async () => {
+      mockExistingConfig()
+      render(<CommandsEditor directory="/test/repo" onClose={vi.fn()} />)
+      await waitFor(() => {
+        expect(screen.getByTestId('action-header-action-1')).toBeTruthy()
+      })
+      fireEvent.click(screen.getByTestId('action-header-action-1'))
+      fireEvent.click(screen.getByTestId('action-surface-review-action-1'))
+      expect(screen.getByTestId('save-commands')).not.toBeDisabled()
+    })
+  })
+
   describe('prompt variants', () => {
     it('shows generic variant toggle for agent actions', async () => {
       mockExistingConfig()
