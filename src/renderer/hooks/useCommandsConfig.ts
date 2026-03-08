@@ -28,6 +28,17 @@ export function useCommandsConfig(directory: string | undefined): {
 
     let cancelled = false
 
+    const watcherId = `commands-config-${directory}`
+    const commandsFile = `${directory}/.broomy/commands.json`
+    let watching = false
+
+    function startWatching() {
+      if (watching) return
+      void window.fs.watch(watcherId, commandsFile).then((result: { success: boolean }) => {
+        watching = result.success
+      })
+    }
+
     async function load() {
       setLoading(true)
       const result = await loadCommandsConfig(directory!)
@@ -46,17 +57,16 @@ export function useCommandsConfig(directory: string | undefined): {
           setError(null)
         }
         setLoading(false)
+        // If config exists, the file exists — start watching if not already
+        if (loaded) startWatching()
       }
     }
 
     void load()
 
-    // Watch for changes to commands.json
-    const watcherId = `commands-config-${directory}`
-    const broomyDir = `${directory}/.broomy`
-    void window.fs.watch(watcherId, broomyDir)
-    const removeListener = window.fs.onChange(watcherId, (event: { eventType: string; filename: string | null }) => {
-      if (event.filename && event.filename !== 'commands.json') return
+    // Watch the commands.json file directly for external edits
+    startWatching()
+    const removeListener = window.fs.onChange(watcherId, () => {
       void load()
     })
 

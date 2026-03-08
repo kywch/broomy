@@ -146,7 +146,6 @@ export function FileTree({
     draggedPath,
     dropTargetPath,
     loadDirectory,
-    refreshTree,
     toggleExpand,
     handleFileClick,
     getFileStatus,
@@ -178,22 +177,6 @@ export function FileTree({
     })
   }, [directory, loadDirectory])
 
-  // Watch for file system changes
-  useEffect(() => {
-    if (!directory) return
-    const watcherId = `explorer-${directory}`
-    let refreshTimeout: ReturnType<typeof setTimeout> | null = null
-    void window.fs.watch(watcherId, directory)
-    const removeListener = window.fs.onChange(watcherId, () => {
-      if (refreshTimeout) clearTimeout(refreshTimeout)
-      refreshTimeout = setTimeout(() => { void refreshTree() }, 500)
-    })
-    return () => {
-      if (refreshTimeout) clearTimeout(refreshTimeout)
-      removeListener()
-      void window.fs.unwatch(watcherId)
-    }
-  }, [directory, refreshTree])
 
   // Focus inline input when it appears
   useEffect(() => {
