@@ -132,60 +132,58 @@ export function matchesSurface(action: ActionDefinition, surface: string): boole
 const VALID_TYPES = ['agent', 'shell'] as const
 const VALID_STYLES = ['primary', 'secondary', 'accent', 'danger'] as const
 
-/**
- * Validate a parsed commands config and return a list of errors.
- * Returns an empty array if the config is valid.
- */
-function validateActionFields(action: Record<string, unknown>, tag: string, errors: string[]): void {
+function validateSurface(surface: unknown, label: string, errors: string[]): void {
+  if (surface === undefined) return
+  if (typeof surface === 'string') return
+  if (Array.isArray(surface)) {
+    if (surface.some((v: unknown) => typeof v !== 'string')) {
+      errors.push(`${label}: "surface" entries must be strings.`)
+    }
+    return
+  }
+  errors.push(`${label}: "surface" must be a string or array of strings.`)
+}
+
+function actionLabel(action: Record<string, unknown>, index: number): string {
+  const id = typeof action.id === 'string' ? action.id : '?'
+  return `Action ${index + 1} (${id})`
+}
+
+function validateAction(action: Record<string, unknown>, index: number, errors: string[]): void {
+  const label = actionLabel(action, index)
+
+  if (typeof action.id !== 'string' || !action.id) {
+    errors.push(`Action ${index + 1}: "id" must be a non-empty string.`)
+  }
+  if (typeof action.label !== 'string' || !action.label) {
+    errors.push(`${label}: "label" must be a non-empty string.`)
+  }
+  if (!VALID_TYPES.includes(action.type as typeof VALID_TYPES[number])) {
+    errors.push(`${label}: "type" must be "agent" or "shell".`)
+  }
   if (action.type === 'agent' && action.prompt !== undefined && typeof action.prompt !== 'string') {
-    errors.push(`${tag}: "prompt" must be a string.`)
+    errors.push(`${label}: "prompt" must be a string.`)
   }
   if (action.type === 'shell' && action.command !== undefined && typeof action.command !== 'string') {
-    errors.push(`${tag}: "command" must be a string.`)
+    errors.push(`${label}: "command" must be a string.`)
   }
   if (!Array.isArray(action.showWhen)) {
-    errors.push(`${tag}: "showWhen" must be an array of strings.`)
+    errors.push(`${label}: "showWhen" must be an array of strings.`)
   } else if (action.showWhen.some((v: unknown) => typeof v !== 'string')) {
-    errors.push(`${tag}: "showWhen" entries must be strings.`)
+    errors.push(`${label}: "showWhen" entries must be strings.`)
   }
   if (action.style !== undefined && !VALID_STYLES.includes(action.style as typeof VALID_STYLES[number])) {
-    errors.push(`${tag}: "style" must be one of: ${VALID_STYLES.join(', ')}.`)
+    errors.push(`${label}: "style" must be one of: ${VALID_STYLES.join(', ')}.`)
   }
-  if (action.surface !== undefined) {
-    if (typeof action.surface === 'string') {
-      // ok
-    } else if (Array.isArray(action.surface)) {
-      if (action.surface.some((v: unknown) => typeof v !== 'string')) {
-        errors.push(`${tag}: "surface" entries must be strings.`)
-      }
-    } else {
-      errors.push(`${tag}: "surface" must be a string or array of strings.`)
-    }
-  }
+  validateSurface(action.surface, label, errors)
   if (action.switchTab !== undefined && typeof action.switchTab !== 'string') {
-    errors.push(`${tag}: "switchTab" must be a string.`)
+    errors.push(`${label}: "switchTab" must be a string.`)
   }
   if (action.agents !== undefined) {
     if (typeof action.agents !== 'object' || action.agents === null || Array.isArray(action.agents)) {
-      errors.push(`${tag}: "agents" must be an object.`)
+      errors.push(`${label}: "agents" must be an object.`)
     }
   }
-}
-
-function validateAction(action: Record<string, unknown>, prefix: string, errors: string[]): void {
-  const id = typeof action.id === 'string' ? action.id : '?'
-  const tag = `${prefix} (${id})`
-
-  if (typeof action.id !== 'string' || !action.id) {
-    errors.push(`${prefix}: "id" must be a non-empty string.`)
-  }
-  if (typeof action.label !== 'string' || !action.label) {
-    errors.push(`${tag}: "label" must be a non-empty string.`)
-  }
-  if (!VALID_TYPES.includes(action.type as typeof VALID_TYPES[number])) {
-    errors.push(`${tag}: "type" must be "agent" or "shell".`)
-  }
-  validateActionFields(action, tag, errors)
 }
 
 export function validateCommandsConfig(config: unknown): string[] {
@@ -208,15 +206,12 @@ export function validateCommandsConfig(config: unknown): string[] {
   }
 
   for (let i = 0; i < obj.actions.length; i++) {
-    const raw: unknown = obj.actions[i]
-    const prefix = `Action ${i + 1}`
-
+    const raw = obj.actions[i]
     if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
-      errors.push(`${prefix}: must be an object.`)
+      errors.push(`Action ${i + 1}: must be an object.`)
       continue
     }
-
-    validateAction(raw as Record<string, unknown>, prefix, errors)
+    validateAction(raw as Record<string, unknown>, i, errors)
   }
 
   return errors

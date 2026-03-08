@@ -391,19 +391,6 @@ function ActionCard({
             />
           </Field>
 
-          <Field label="Where this button appears">
-            <select
-              value={action.surface ? (Array.isArray(action.surface) ? action.surface[0] : action.surface) : 'source-control'}
-              onChange={(e) => onUpdate({ surface: e.target.value === 'source-control' ? undefined : e.target.value })}
-              className="w-full px-2 py-1.5 text-sm rounded border border-border bg-bg-secondary text-text-primary focus:outline-none focus:border-accent"
-              data-testid={`action-surface-${action.id}`}
-            >
-              {SURFACE_OPTIONS.map((s) => (
-                <option key={s.value} value={s.value}>{s.label}</option>
-              ))}
-            </select>
-          </Field>
-
           <Field label="Style">
             <select
               value={action.style ?? 'secondary'}
