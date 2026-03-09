@@ -45,6 +45,35 @@ describe('focusAgentTerminal', () => {
     rAFs[1](0)
   })
 
+  it('focuses textarea when terminal panel exists in DOM', () => {
+    useSessionStore.setState({
+      activeSessionId: 'session-1',
+      setActiveTerminalTab: vi.fn(),
+    })
+
+    // Create the DOM elements
+    const panel = document.createElement('div')
+    panel.setAttribute('data-panel-id', 'terminal')
+    const textarea = document.createElement('textarea')
+    textarea.className = 'xterm-helper-textarea'
+    panel.appendChild(textarea)
+    document.body.appendChild(panel)
+    const focusSpy = vi.spyOn(textarea, 'focus')
+
+    const rAFs: FrameRequestCallback[] = []
+    vi.spyOn(window, 'requestAnimationFrame').mockImplementation((cb) => {
+      rAFs.push(cb)
+      return rAFs.length
+    })
+
+    focusAgentTerminal()
+    rAFs[0](0) // first rAF
+    rAFs[1](0) // second rAF — should focus textarea
+
+    expect(focusSpy).toHaveBeenCalled()
+    document.body.removeChild(panel)
+  })
+
   it('does not set tab when no active session', () => {
     const mockSetActiveTerminalTab = vi.fn()
     useSessionStore.setState({
