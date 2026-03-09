@@ -184,25 +184,35 @@ This uses Docker to cross-compile for both x64 and arm64. Prebuilds are stored i
 
 ## Manual Method
 
-If you prefer to run each step yourself:
+If you prefer to run each step yourself (replicates what `release:all` does):
 
 ```bash
-# 1. Clean old artifacts and build for each platform
-rm -rf dist
-pnpm dist:signed              # macOS (signed) — or pnpm dist:mac (unsigned)
-pnpm dist:win                 # Windows
-pnpm dist:linux               # Linux (requires prebuilds)
+# 1. Pre-flight: must be on main with a clean working tree
+git status
 
-# 2. Bump the version, commit, tag, push
-pnpm version:bump patch
+# 2. Run checks
+pnpm lint
+pnpm typecheck
+pnpm test:unit
+
+# 3. Bump version, commit, and tag (before building so artifacts get the new version)
+pnpm version:bump patch       # or minor/major
 git add package.json website/package.json
 git commit -m "Release v1.2.3"
 git tag v1.2.3
-git push && git push --tags
 
-# 3. Create the GitHub release
-pnpm release
+# 4. Build all platforms (picks up the new version from package.json)
+rm -rf dist
+pnpm dist:all                 # macOS signed, Windows + Linux unsigned
+
+# 5. Verify artifacts look correct, then push and publish
+git push && git push --tags
+gh release create v1.2.3 dist/*.dmg dist/*.zip dist/*.exe dist/*.AppImage dist/*.deb dist/*.yml \
+  --title "Broomy v1.2.3" \
+  --notes-file release-notes.md
 ```
+
+If you need to undo before pushing: `git reset --soft HEAD~1 && git tag -d v1.2.3`
 
 ## Building a Single Platform (Without Publishing)
 
