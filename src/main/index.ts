@@ -19,7 +19,8 @@ import * as pty from 'node-pty'
 import { isWindows, isMac, isLinux, resolveWindowsCommand } from './platform'
 import { registerAllHandlers, HandlerContext, PROFILES_FILE } from './handlers'
 import { resolveShellEnv } from './shellEnv'
-import { writeCrashLog } from './crashLog'
+import { writeCrashLog, checkForUncleanShutdown, markRunning, markCleanExit } from './crashLog'
+import { disposePtyListenersForWindow, disposeAllPtyListeners } from './handlers/pty'
 
 // Ensure app name is correct (in dev mode Electron defaults to "Electron")
 app.name = 'Broomy'
@@ -46,6 +47,13 @@ if (isWindows) {
     const current = process.env.PATH ?? ''
     process.env.PATH = `${[...dirsToAdd].join(';')};${current}`
   }
+}
+
+// Detect unclean shutdown from previous session (pidfile still present),
+// then mark this session as running so the next launch can detect crashes
+if (!isE2ETest) {
+  checkForUncleanShutdown()
+  markRunning()
 }
 
 // Crash handlers — write crash report to disk so the next launch can show recovery UI
@@ -169,6 +177,8 @@ function createWindow(profileId?: string): BrowserWindow {
     // Only clean up on same-origin navigation (reload), not initial load
     const currentUrl = window.webContents.getURL()
     if (currentUrl && currentUrl !== url) return
+    // Dispose native event listeners before killing PTY processes
+    disposePtyListenersForWindow(ptyOwnerWindows, window)
     for (const [id, owner] of ptyOwnerWindows) {
       if (owner === window) {
         const proc = ptyProcesses.get(id)
@@ -211,6 +221,8 @@ function createWindow(profileId?: string): BrowserWindow {
     if (profileId) {
       profileWindows.delete(profileId)
     }
+    // Dispose native event listeners before killing PTY processes
+    disposePtyListenersForWindow(ptyOwnerWindows, window)
     // Kill PTY processes belonging to this window only
     for (const [id, owner] of ptyOwnerWindows) {
       if (owner === window) {
@@ -438,7 +450,16 @@ function buildAppMenu() {
   })
 })
 
+// Mark clean exit so the next launch doesn't show a crash banner
+app.on('will-quit', () => {
+  if (!isE2ETest) {
+    markCleanExit()
+  }
+})
+
 app.on('window-all-closed', () => {
+  // Dispose all native PTY event listeners before killing processes
+  disposeAllPtyListeners()
   // Kill all PTY processes
   for (const [id, ptyProcess] of ptyProcesses) {
     ptyProcess.kill()

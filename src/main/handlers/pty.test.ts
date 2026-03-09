@@ -307,10 +307,15 @@ describe('pty handlers', () => {
       expect(mockSenderWindow.webContents.send).toHaveBeenCalledWith('pty:data:data-1', 'hello world')
     })
 
-    it('cleans up on exit event', async () => {
+    it('cleans up on exit event and disposes listeners', async () => {
       const { register } = await import('./pty')
       const ctx = createCtx()
       register(mockIpcMain as never, ctx)
+
+      const dataDispose = vi.fn()
+      const exitDispose = vi.fn()
+      mockPtyOnData.mockReturnValue({ dispose: dataDispose })
+      mockPtyOnExit.mockReturnValue({ dispose: exitDispose })
 
       const mockProcess = createMockPtyProcess()
       mockPtySpawn.mockReturnValue(mockProcess)
@@ -330,6 +335,8 @@ describe('pty handlers', () => {
       expect(mockSenderWindow.webContents.send).toHaveBeenCalledWith('pty:exit:exit-1', 0)
       expect(ctx.ptyProcesses.has('exit-1')).toBe(false)
       expect(ctx.ptyOwnerWindows.has('exit-1')).toBe(false)
+      expect(dataDispose).toHaveBeenCalled()
+      expect(exitDispose).toHaveBeenCalled()
     })
 
     it('does not send data if owner window is destroyed', async () => {
@@ -533,6 +540,30 @@ describe('pty handlers', () => {
 
       await handlers['pty:kill'](mockEvent, 'nonexistent')
       expect(mockPtyKill).not.toHaveBeenCalled()
+    })
+
+    it('disposes event listeners when killing a PTY', async () => {
+      const { register } = await import('./pty')
+      const ctx = createCtx()
+      register(mockIpcMain as never, ctx)
+
+      const dataDispose = vi.fn()
+      const exitDispose = vi.fn()
+      mockPtyOnData.mockReturnValue({ dispose: dataDispose })
+      mockPtyOnExit.mockReturnValue({ dispose: exitDispose })
+
+      const mockProcess = createMockPtyProcess()
+      mockPtySpawn.mockReturnValue(mockProcess)
+      mockBrowserWindowFromWebContents.mockReturnValue(mockSenderWindow)
+
+      await handlers['pty:create'](mockEvent, {
+        id: 'dispose-1',
+        cwd: '/tmp',
+      })
+
+      await handlers['pty:kill'](mockEvent, 'dispose-1')
+      expect(dataDispose).toHaveBeenCalled()
+      expect(exitDispose).toHaveBeenCalled()
     })
   })
 })

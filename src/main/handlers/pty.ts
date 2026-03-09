@@ -28,6 +28,34 @@ function resolveInitialCommand(command: string, isE2ETest: boolean): string {
   return command
 }
 
+/** Disposables for each PTY's onData/onExit listeners, keyed by PTY id. */
+const ptyDisposables = new Map<string, { dispose: () => void }[]>()
+
+/** Dispose all event listeners for a PTY and remove from the disposables map. */
+export function disposePtyListeners(id: string) {
+  const disposables = ptyDisposables.get(id)
+  if (disposables) {
+    for (const d of disposables) d.dispose()
+    ptyDisposables.delete(id)
+  }
+}
+
+/** Dispose all PTY listeners for PTYs owned by the given window. */
+export function disposePtyListenersForWindow(ownerWindows: Map<string, BrowserWindow>, window: BrowserWindow) {
+  for (const [id, owner] of ownerWindows) {
+    if (owner === window) {
+      disposePtyListeners(id)
+    }
+  }
+}
+
+/** Dispose all PTY listeners. */
+export function disposeAllPtyListeners() {
+  for (const [id] of ptyDisposables) {
+    disposePtyListeners(id)
+  }
+}
+
 export function register(ipcMain: IpcMain, ctx: HandlerContext): void {
   ipcMain.handle('pty:create', (_event, options: { id: string; cwd: string; command?: string; sessionId?: string; env?: Record<string, string>; shell?: string }) => {
     // Find the sender window
@@ -131,21 +159,32 @@ export function register(ipcMain: IpcMain, ctx: HandlerContext): void {
     }
 
     // Forward data to the window that created this PTY
-    ptyProcess.onData((data) => {
-      const ownerWindow = ctx.ptyOwnerWindows.get(options.id) || ctx.mainWindow
-      if (ownerWindow && !ownerWindow.isDestroyed()) {
-        ownerWindow.webContents.send(`pty:data:${options.id}`, data)
+    const dataDisposable = ptyProcess.onData((data) => {
+      try {
+        const ownerWindow = ctx.ptyOwnerWindows.get(options.id) || ctx.mainWindow
+        if (ownerWindow && !ownerWindow.isDestroyed()) {
+          ownerWindow.webContents.send(`pty:data:${options.id}`, data)
+        }
+      } catch {
+        // Swallow errors to prevent native crash from NAPI callback propagation
       }
     })
 
-    ptyProcess.onExit(({ exitCode }) => {
-      const ownerWindow = ctx.ptyOwnerWindows.get(options.id) || ctx.mainWindow
-      if (ownerWindow && !ownerWindow.isDestroyed()) {
-        ownerWindow.webContents.send(`pty:exit:${options.id}`, exitCode)
+    const exitDisposable = ptyProcess.onExit(({ exitCode }) => {
+      try {
+        const ownerWindow = ctx.ptyOwnerWindows.get(options.id) || ctx.mainWindow
+        if (ownerWindow && !ownerWindow.isDestroyed()) {
+          ownerWindow.webContents.send(`pty:exit:${options.id}`, exitCode)
+        }
+      } catch {
+        // Swallow errors to prevent native crash from NAPI callback propagation
       }
+      disposePtyListeners(options.id)
       ctx.ptyProcesses.delete(options.id)
       ctx.ptyOwnerWindows.delete(options.id)
     })
+
+    ptyDisposables.set(options.id, [dataDisposable, exitDisposable])
 
     // If a command was specified (or in E2E test mode), run it after shell starts
     if (initialCommand) {
@@ -175,6 +214,7 @@ export function register(ipcMain: IpcMain, ctx: HandlerContext): void {
   ipcMain.handle('pty:kill', (_event, id: string) => {
     const ptyProcess = ctx.ptyProcesses.get(id)
     if (ptyProcess) {
+      disposePtyListeners(id)
       ptyProcess.kill()
       ctx.ptyProcesses.delete(id)
     }
