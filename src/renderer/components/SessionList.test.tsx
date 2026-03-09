@@ -225,6 +225,30 @@ describe('SessionList', () => {
       fireEvent.keyDown(card, { key: 'Backspace' })
       expect(screen.getByText('Delete Session')).toBeTruthy()
     })
+
+    it('ArrowDown focuses next session card', () => {
+      setSessions([
+        makeSession({ id: 's1', branch: 'first' }),
+        makeSession({ id: 's2', branch: 'second' }),
+      ])
+      const { container } = render(<SessionList {...makeProps()} />)
+      const cards = container.querySelectorAll('[tabindex="0"]')
+      const focusSpy = vi.spyOn(cards[1] as HTMLElement, 'focus')
+      fireEvent.keyDown(cards[0], { key: 'ArrowDown' })
+      expect(focusSpy).toHaveBeenCalled()
+    })
+
+    it('ArrowUp focuses previous session card', () => {
+      setSessions([
+        makeSession({ id: 's1', branch: 'first' }),
+        makeSession({ id: 's2', branch: 'second' }),
+      ])
+      const { container } = render(<SessionList {...makeProps()} />)
+      const cards = container.querySelectorAll('[tabindex="0"]')
+      const focusSpy = vi.spyOn(cards[0] as HTMLElement, 'focus')
+      fireEvent.keyDown(cards[1], { key: 'ArrowUp' })
+      expect(focusSpy).toHaveBeenCalled()
+    })
   })
 
   describe('delete dialog', () => {
@@ -372,6 +396,24 @@ describe('SessionList', () => {
       setSessions([makeSession({ id: 's1', branch: 'b1', branchStatus: 'empty' })])
       render(<SessionList {...makeProps()} />)
       expect(screen.getByText('EMPTY')).toBeTruthy()
+    })
+
+    it('clears working spinner when status transitions to idle before debounce', async () => {
+      vi.useFakeTimers()
+      setSessions([makeSession({ id: 's1', branch: 'b1', status: 'working' })])
+      const { container, rerender } = render(<SessionList {...makeProps()} />)
+      // Advance part way — not yet 1.5s
+      await vi.advanceTimersByTimeAsync(500)
+      expect(container.querySelector('.animate-spin')).toBeNull()
+      // Switch to idle before debounce fires
+      useSessionStore.setState({
+        sessions: [makeSession({ id: 's1', branch: 'b1', status: 'idle' })],
+      })
+      rerender(<SessionList {...makeProps()} />)
+      await vi.advanceTimersByTimeAsync(2000)
+      // Should still show idle, not working
+      expect(container.querySelector('.animate-spin')).toBeNull()
+      vi.useRealTimers()
     })
   })
 
