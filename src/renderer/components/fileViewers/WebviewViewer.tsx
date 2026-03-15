@@ -39,14 +39,20 @@ function WebviewViewerComponent({ filePath }: FileViewerComponentProps) {
       })()`)
     }
 
+    const handleBlur = () => {
+      document.dispatchEvent(new CustomEvent('broomy:check-pr-status'))
+    }
+
     webview.addEventListener('did-navigate', handleNavigation)
     webview.addEventListener('did-navigate-in-page', handleNavigation)
     webview.addEventListener('dom-ready', handleDomReady)
+    webview.addEventListener('blur', handleBlur)
 
     return () => {
       webview.removeEventListener('did-navigate', handleNavigation)
       webview.removeEventListener('did-navigate-in-page', handleNavigation)
       webview.removeEventListener('dom-ready', handleDomReady)
+      webview.removeEventListener('blur', handleBlur)
     }
   }, [])
 
