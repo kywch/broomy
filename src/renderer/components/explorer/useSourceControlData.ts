@@ -31,6 +31,19 @@ function usePrEffects(config: PrEffectsConfig) {
   const [hasWriteAccess, setHasWriteAccess] = useState(false)
   const [checksStatus, setChecksStatus] = useState<'passed' | 'failed' | 'pending' | 'none'>('none')
   const [hasPrLoadedOnce, setHasPrLoadedOnce] = useState(false)
+  const [prRefreshKey, setPrRefreshKey] = useState(0)
+
+  // Listen for focus-based PR check events (webview blur, explorer focus-in)
+  // and re-fetch only when the current PR is OPEN (may have been merged externally).
+  useEffect(() => {
+    const handler = () => {
+      if (directory && prStatus?.state === 'OPEN') {
+        setPrRefreshKey(k => k + 1)
+      }
+    }
+    document.addEventListener('broomy:check-pr-status', handler)
+    return () => document.removeEventListener('broomy:check-pr-status', handler)
+  }, [directory, prStatus?.state])
 
   // Fetch PR status, write access, and checks when source control is active
   useEffect(() => {
@@ -70,7 +83,7 @@ function usePrEffects(config: PrEffectsConfig) {
 
     void fetchPrInfo()
     return () => { cancelled = true }
-  }, [directory, syncStatus?.ahead, syncStatus?.behind])
+  }, [directory, syncStatus?.ahead, syncStatus?.behind, prRefreshKey])
 
   // Update session PR state when Explorer fetches PR status
   useEffect(() => {
