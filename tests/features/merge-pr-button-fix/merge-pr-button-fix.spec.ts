@@ -1,15 +1,15 @@
 /**
  * Feature Documentation: Merge PR Button Fix
  *
- * Documents the "Merge PR to main" action button and its visibility conditions.
- * The button requires: clean working tree, open PR, checks passed, write access,
- * and merge allowed. A missing useMemo dependency on checksStatus caused the
- * button to disappear when checks status changed; this fix adds it.
+ * Documents the "Merge PR to main" action button appearing correctly when
+ * all conditions are met: clean working tree, open PR, checks passed,
+ * write access, and merge allowed. A missing useMemo dependency on
+ * checksStatus was causing the button to disappear; this fix adds it.
  *
  * Run with: pnpm test:feature-docs merge-pr-button-fix
  */
 import { test, expect, resetApp } from '../_shared/electron-fixture'
-import type { Page } from '@playwright/test'
+import type { Page, ElectronApplication } from '@playwright/test'
 import path from 'path'
 import fs from 'fs'
 import { fileURLToPath } from 'url'
@@ -24,6 +24,7 @@ const SCREENSHOTS = path.join(FEATURE_DIR, 'screenshots')
 const FEATURES_ROOT = path.join(__dirname, '..')
 
 let page: Page
+let electronApp: ElectronApplication
 const steps: FeatureStep[] = []
 
 /** Navigate the explorer panel to the source-control tab */
@@ -64,19 +65,24 @@ async function switchToSession(sessionId: string) {
 
 test.beforeAll(async () => {
   await fs.promises.mkdir(SCREENSHOTS, { recursive: true })
-  ;({ page } = await resetApp())
+  ;({ page, electronApp } = await resetApp())
 })
 
 test.afterAll(async () => {
+  // Reset git clean override for subsequent tests
+  await electronApp.evaluate((_electron) => {
+    process.env.E2E_MOCK_GIT_CLEAN = ''
+  })
+
   await generateFeaturePage(
     {
       title: 'Fix: Merge PR Button Visibility',
       description:
         'The "Merge PR to main" action button was disappearing from the source control ' +
         'panel due to a missing checksStatus dependency in the useMemo that computes ' +
-        'condition state. When checksStatus changed (e.g. from "none" to "passed"), the ' +
-        'memoized condition state was not recalculated, causing the checks-passed condition ' +
-        'to become stale. This fix adds data.checksStatus to the dependency array.',
+        'condition state. When checksStatus changed, the memoized condition state was not ' +
+        'recalculated, causing the checks-passed condition to become stale. This fix adds ' +
+        'data.checksStatus to the dependency array so the button appears reliably.',
       steps,
     },
     FEATURE_DIR,
@@ -85,94 +91,105 @@ test.afterAll(async () => {
 })
 
 test.describe.serial('Feature: Merge PR Button Fix', () => {
-  test('Step 1: Feature branch with open PR and uncommitted changes', async () => {
-    // Session 2 (backend-api) is on feature/auth with an open PR
+  test('Step 1: Feature branch with dirty working tree — merge button hidden', async () => {
+    // Session 2 (backend-api) is on feature/auth with an open PR in E2E mock data
     await switchToSession('2')
     await openSourceControl()
-
-    // Wait for PR status to load
     await page.waitForTimeout(2000)
 
-    const explorer = page.locator('[data-panel-id="explorer"]')
-    await expect(explorer).toBeVisible()
+    // With uncommitted changes, Merge PR should NOT be visible
+    const mergePrButton = page.locator('button:has-text("Merge PR to main")')
+    await expect(mergePrButton).not.toBeVisible()
 
-    await screenshotElement(page, explorer, path.join(SCREENSHOTS, '01-feature-branch-dirty.png'), {
+    // Commit with AI should be visible (has-changes condition met)
+    const commitButton = page.locator('button:has-text("Commit with AI")')
+    await expect(commitButton).toBeVisible()
+
+    const explorer = page.locator('[data-panel-id="explorer"]')
+    await screenshotElement(page, explorer, path.join(SCREENSHOTS, '01-dirty-no-merge.png'), {
       maxHeight: 600,
     })
     steps.push({
-      screenshotPath: 'screenshots/01-feature-branch-dirty.png',
-      caption: 'Feature branch with open PR but uncommitted changes',
+      screenshotPath: 'screenshots/01-dirty-no-merge.png',
+      caption: 'Merge PR button hidden when working tree is dirty',
       description:
-        'The backend-api session is on feature/auth with an open PR (shown in the PR banner). ' +
-        'The "Merge PR to main" button is not visible because the working tree has uncommitted ' +
-        'changes — the "clean" showWhen condition is false. The "Commit with AI" button appears ' +
-        'instead, since its condition "has-changes" is true.',
+        'The feature/auth branch has an open PR (shown in the banner), but the working tree ' +
+        'has uncommitted changes. The "clean" showWhen condition is false, so the "Merge PR ' +
+        'to main" button is correctly hidden. "Commit with AI" appears instead.',
     })
   })
 
-  test('Step 2: Verify Commit with AI button visible (has-changes condition)', async () => {
-    // With uncommitted changes, Commit with AI should be visible
-    const commitButton = page.locator('button:has-text("Commit with AI")')
-    await expect(commitButton).toBeVisible({ timeout: 5000 })
+  test('Step 2: Clean working tree with open PR — merge button appears', async () => {
+    // Set E2E_MOCK_GIT_CLEAN on the main process so git:status returns clean data.
+    // This simulates the user having committed all changes.
+    await electronApp.evaluate((_electron) => {
+      process.env.E2E_MOCK_GIT_CLEAN = 'true'
+    })
 
-    // Merge PR should NOT be visible (working tree is dirty)
+    // Wait for git polling (every 2s) to pick up the clean status, compute
+    // branchStatus='open' from lastKnownPrState='OPEN', and for React to re-render
     const mergePrButton = page.locator('button:has-text("Merge PR to main")')
-    await expect(mergePrButton).not.toBeVisible()
+    await expect(mergePrButton).toBeVisible({ timeout: 10000 })
 
-    await screenshotElement(page, commitButton, path.join(SCREENSHOTS, '02-commit-button.png'), {
-      padding: 8,
-    })
-    steps.push({
-      screenshotPath: 'screenshots/02-commit-button.png',
-      caption: 'Commit with AI button shown instead of Merge PR',
-      description:
-        'The condition system correctly shows "Commit with AI" (showWhen: has-changes, !merging) ' +
-        'and hides "Merge PR to main" (showWhen: clean, open, checks-passed, has-write-access, ' +
-        'allow-approve-and-merge, !review). The merge button requires ALL conditions to be true.',
-    })
-  })
-
-  test('Step 3: PR banner confirms open PR state', async () => {
-    // The PR banner should show PR #123 as open
-    const prBanner = page.locator('text=PR #').first()
-    const bannerVisible = await prBanner.isVisible().catch(() => false)
+    // Commit with AI should be hidden (no changes)
+    const commitButton = page.locator('button:has-text("Commit with AI")')
+    await expect(commitButton).not.toBeVisible()
 
     const explorer = page.locator('[data-panel-id="explorer"]')
-    await screenshotElement(page, explorer, path.join(SCREENSHOTS, '03-pr-banner.png'), {
-      maxHeight: 300,
+    await screenshotElement(page, explorer, path.join(SCREENSHOTS, '02-clean-merge-visible.png'), {
+      maxHeight: 600,
     })
     steps.push({
-      screenshotPath: 'screenshots/03-pr-banner.png',
-      caption: bannerVisible ? 'PR banner showing open PR status' : 'Source control header with branch info',
+      screenshotPath: 'screenshots/02-clean-merge-visible.png',
+      caption: 'Merge PR button appears with clean tree and open PR',
       description:
-        'The PR banner shows the pull request is open. The fix ensures that when the PR ' +
-        'status and checks status are fetched, both values are properly tracked in the ' +
-        'useMemo dependency array. Previously, checksStatus was missing from the deps, ' +
-        'causing the condition state to become stale after a re-render triggered by ' +
-        'other dependency changes (e.g. git polling updating syncStatus).',
+        'After committing all changes, the working tree is clean. All six showWhen conditions ' +
+        'for the merge button are now met: clean (no uncommitted files), open (PR is OPEN), ' +
+        'checks-passed (CI checks passed), has-write-access (user can push), ' +
+        'allow-approve-and-merge (repo setting enabled), and !review (not in review tab). ' +
+        'With the fix, checksStatus changes are properly tracked so this button stays visible.',
     })
   })
 
-  test('Step 4: Main branch session has no merge button', async () => {
-    // Session 1 (broomy) is on main — no merge PR button
+  test('Step 3: Merge PR button close-up', async () => {
+    const mergePrButton = page.locator('button:has-text("Merge PR to main")')
+    await expect(mergePrButton).toBeVisible()
+
+    await screenshotElement(page, mergePrButton, path.join(SCREENSHOTS, '03-merge-button-closeup.png'), {
+      padding: 12,
+    })
+    steps.push({
+      screenshotPath: 'screenshots/03-merge-button-closeup.png',
+      caption: 'The "Merge PR to main" action button',
+      description:
+        'Close-up of the merge button. When clicked, it sends a prompt to the AI agent ' +
+        'that pulls latest from main, resolves conflicts, runs validation, pushes, and ' +
+        'merges the PR via `gh pr merge --merge`. The button only appears when all conditions ' +
+        'are satisfied, preventing accidental merges.',
+    })
+  })
+
+  test('Step 4: Main branch — no merge button (correct behavior)', async () => {
+    // Switch to session 1 (on main branch) — merge button should not appear
+    // even with clean git status, because there's no open PR on main
     await switchToSession('1')
     await openSourceControl()
-    await page.waitForTimeout(1500)
+    await page.waitForTimeout(3000)
 
     const mergePrButton = page.locator('button:has-text("Merge PR to main")')
     await expect(mergePrButton).not.toBeVisible()
 
     const explorer = page.locator('[data-panel-id="explorer"]')
-    await screenshotElement(page, explorer, path.join(SCREENSHOTS, '04-main-branch.png'), {
+    await screenshotElement(page, explorer, path.join(SCREENSHOTS, '04-main-no-merge.png'), {
       maxHeight: 500,
     })
     steps.push({
-      screenshotPath: 'screenshots/04-main-branch.png',
-      caption: 'Main branch: no merge button (correct behavior)',
+      screenshotPath: 'screenshots/04-main-no-merge.png',
+      caption: 'No merge button on main branch',
       description:
-        'On the main branch, there is no open PR, so the "open" condition is false and ' +
-        'the merge button does not appear. The condition evaluation system correctly ' +
-        'hides actions whose showWhen conditions are not met.',
+        'On the main branch there is no open PR, so the "open" condition is false and the ' +
+        'merge button does not appear. The condition system correctly shows only relevant ' +
+        'actions for each branch state.',
     })
   })
 })
