@@ -8,7 +8,7 @@
  * The outer App component wraps AppContent in the PanelProvider context.
  */
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
-import Layout from './components/Layout'
+import Layout from './layout/Layout'
 import NewSessionDialog from './components/NewSessionDialog'
 import PanelPicker from './shared/components/PanelPicker'
 import ProfileChip from './components/ProfileChip'
