@@ -1,7 +1,7 @@
 /**
  * Hook that manages source control data fetching for PR status, branch changes, and commits.
  */
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import type { GitFileStatus, GitStatusResult, GitHubPrStatus, GitCommitInfo } from '../../../preload/index'
 import type { BranchStatus, PrState } from '../../store/sessions'
 import { useRepoStore } from '../../store/repos'
@@ -117,7 +117,7 @@ function usePrEffects(config: PrEffectsConfig) {
     setHasPrLoadedOnce(false)
   }
 
-  const refreshPr = () => setPrRefreshKey(k => k + 1)
+  const refreshPr = useCallback(() => setPrRefreshKey(k => k + 1), [])
 
   return {
     prStatus, isPrLoading,

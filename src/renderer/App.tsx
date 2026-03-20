@@ -145,9 +145,13 @@ function usePrAutoRefresh({ isLoading, sessions, refreshPrStatus, updatePrState 
     }
   }, [isLoading, sessions.length, refreshPrStatus])
 
+  // Derive a stable key from session unread states to avoid running on unrelated session changes
+  const unreadKey = useMemo(() => sessions.map(s => `${s.id}:${s.isUnread}`).join(','), [sessions])
+  const sessionsRef = useRef(sessions)
+  sessionsRef.current = sessions
   const prevUnread = useRef<Record<string, boolean>>({})
   useEffect(() => {
-    for (const session of sessions) {
+    for (const session of sessionsRef.current) {
       const wasUnread = prevUnread.current[session.id] ?? false
       if (session.isUnread && !wasUnread) {
         void window.gh.prStatus(session.directory).then((prResult) => {
@@ -160,7 +164,7 @@ function usePrAutoRefresh({ isLoading, sessions, refreshPrStatus, updatePrState 
       }
       prevUnread.current[session.id] = session.isUnread
     }
-  }, [sessions, updatePrState])
+  }, [unreadKey, updatePrState])
 }
 
 function AppContent() {
