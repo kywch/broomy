@@ -6,7 +6,7 @@ import type { Session } from '../../../store/sessions'
 import type { ProfileData } from '../../../store/profiles'
 
 // Mock terminalBufferRegistry
-vi.mock('../utils/terminalBufferRegistry', () => ({
+vi.mock('../../../shared/utils/terminalBufferRegistry', () => ({
   terminalBufferRegistry: {
     getLastLines: vi.fn().mockReturnValue('mock terminal output'),
     getBuffer: vi.fn().mockReturnValue('mock buffer'),

@@ -8,7 +8,7 @@ import { useSessionStore } from '../../../store/sessions'
 import type { ManagedRepo, GitHubIssue } from '../../../../preload/index'
 import { issueToBranchName } from '../../../shared/utils/slugify'
 import { DialogErrorBanner } from '../../../shared/components/ErrorBanner'
-import { AuthSetupSection } from '../../../panels/settings/AuthSetupSection'
+import { AuthSetupSection } from '../../../shared/components/AuthSetupSection'
 
 export function NewBranchView({
   repo,

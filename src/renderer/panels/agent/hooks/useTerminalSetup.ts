@@ -8,7 +8,7 @@ import { SerializeAddon } from '@xterm/addon-serialize'
 
 import { useSessionStore } from '../../../store/sessions'
 import { useRepoStore } from '../../../store/repos'
-import { terminalBufferRegistry } from '../utils/terminalBufferRegistry'
+import { terminalBufferRegistry } from '../../../shared/utils/terminalBufferRegistry'
 import { useTerminalKeyboard } from './useTerminalKeyboard'
 import { usePlanDetection } from '../../../features/git/hooks/usePlanDetection'
 import { createPtyDataHandler } from './ptyDataHandler'

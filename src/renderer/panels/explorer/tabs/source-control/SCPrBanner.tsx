@@ -7,8 +7,8 @@ import type { NavigationTarget } from '../../../../shared/utils/fileNavigation'
 import { prStateBadgeClass } from '../../../../features/git/explorerHelpers'
 import { DialogErrorBanner } from '../../../../shared/components/ErrorBanner'
 import { useRepoStore } from '../../../../store/repos'
-import { AuthSetupSection, isAuthError } from '../../../../panels/settings/AuthSetupSection'
-import { isGitConfigError } from '../../../../panels/settings/GitIdentitySetup'
+import { AuthSetupSection, isAuthError } from '../../../../shared/components/AuthSetupSection'
+import { isGitConfigError } from '../../../../shared/components/GitIdentitySetup'
 
 interface SCPrBannerProps {
   prStatus: GitHubPrStatus

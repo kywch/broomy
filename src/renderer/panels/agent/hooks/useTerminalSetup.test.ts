@@ -6,7 +6,7 @@ import { useSessionStore } from '../../../store/sessions'
 import { useErrorStore } from '../../../store/errors'
 import { allowConsoleError } from '../../../../test/console-guard'
 import { PANEL_IDS, DEFAULT_TOOLBAR_PANELS } from '../../../panels/system/types'
-import { terminalBufferRegistry } from '../utils/terminalBufferRegistry'
+import { terminalBufferRegistry } from '../../../shared/utils/terminalBufferRegistry'
 
 // Mock xterm and addons
 const mockTerminalWrite = vi.fn((_data: string, cb?: () => void) => { cb?.() })
@@ -67,7 +67,7 @@ vi.mock('./usePlanDetection', () => ({
   usePlanDetection: vi.fn().mockReturnValue(vi.fn()),
 }))
 
-vi.mock('../utils/terminalBufferRegistry', () => ({
+vi.mock('../../../shared/utils/terminalBufferRegistry', () => ({
   terminalBufferRegistry: {
     register: vi.fn(),
     unregister: vi.fn(),

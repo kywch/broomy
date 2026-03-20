@@ -17,8 +17,8 @@ import {
   type ActionDefinition,
 } from '../../features/commands/commandsConfig'
 import { DialogErrorBanner } from '../../shared/components/ErrorBanner'
-import { ShowWhenPicker } from '../settings/ShowWhenPicker'
-import { PromptVariants } from '../settings/PromptVariants'
+import { ShowWhenPicker } from '../../shared/components/ShowWhenPicker'
+import { PromptVariants } from '../../shared/components/PromptVariants'
 import { useAgentStore } from '../../store/agents'
 
 const STYLE_OPTIONS = ['primary', 'secondary', 'accent', 'danger'] as const

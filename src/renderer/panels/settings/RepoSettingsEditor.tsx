@@ -4,7 +4,7 @@
 import { useState, useEffect } from 'react'
 import type { AgentConfig } from '../../store/agents'
 import type { ManagedRepo, DevcontainerStatus } from '../../../preload/index'
-import { IsolationSettings } from './IsolationSettings'
+import { IsolationSettings } from '../../shared/components/IsolationSettings'
 
 export function RepoSettingsEditor({
   repo,

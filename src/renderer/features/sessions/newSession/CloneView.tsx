@@ -5,8 +5,8 @@ import { useState, useEffect } from 'react'
 import { useAgentStore } from '../../../store/agents'
 import { useRepoStore } from '../../../store/repos'
 import { DialogErrorBanner } from '../../../shared/components/ErrorBanner'
-import { AuthSetupSection } from '../../../panels/settings/AuthSetupSection'
-import { IsolationSettings } from '../../../panels/settings/IsolationSettings'
+import { AuthSetupSection } from '../../../shared/components/AuthSetupSection'
+import { IsolationSettings } from '../../../shared/components/IsolationSettings'
 import type { DevcontainerStatus } from '../../../../preload/index'
 
 function NoWriteAccessBanner({ onContinue }: { onContinue?: () => void }) {

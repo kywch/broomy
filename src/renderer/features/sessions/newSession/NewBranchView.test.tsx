@@ -9,7 +9,7 @@ import { NewBranchView } from './NewBranchView'
 import type { ManagedRepo } from '../../../../preload/index'
 
 // Mock AuthTerminal to avoid xterm.js in jsdom
-vi.mock('../../../panels/settings/AuthTerminal', () => ({
+vi.mock('../../../shared/components/AuthTerminal', () => ({
   AuthTerminal: ({ ptyId, onDone }: { ptyId: string; onDone: () => void }) => (
     <div data-testid="auth-terminal" data-pty-id={ptyId}>
       <button onClick={onDone}>Done</button>
