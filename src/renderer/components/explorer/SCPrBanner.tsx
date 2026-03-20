@@ -102,7 +102,9 @@ export function SCPrBanner({
               ISSUE
             </span>
             <button
-              onClick={() => window.shell.openExternal(issueUrl)}
+              onClick={() => onFileSelect
+                ? onFileSelect({ filePath: issueUrl, openInDiffMode: false })
+                : window.shell.openExternal(issueUrl)}
               className="text-xs text-accent hover:underline truncate flex-1 text-left"
             >
               #{issueNumber}{issueTitle ? `: ${issueTitle}` : ''}
