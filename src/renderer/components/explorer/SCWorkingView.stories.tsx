@@ -46,7 +46,6 @@ const meta: Meta<typeof SCWorkingView> = {
     isMerging: false,
     hasConflicts: false,
     isCommitting: false,
-    onCommit: () => {},
     onCommitMerge: () => {},
     onStage: () => {},
     onStageAll: () => {},

@@ -228,7 +228,6 @@ export function SourceControl({
         isMerging={syncStatus?.isMerging ?? false}
         hasConflicts={syncStatus?.hasConflicts ?? false}
         isCommitting={data.isCommitting}
-        onCommit={actions.handleCommit}
         onCommitMerge={actions.handleCommitMerge}
         onStage={actions.handleStage}
         onStageAll={actions.handleStageAll}
