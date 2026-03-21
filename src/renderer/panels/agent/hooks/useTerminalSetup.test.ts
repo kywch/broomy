@@ -22,6 +22,8 @@ const mockTerminalOnScroll = vi.fn().mockReturnValue({ dispose: vi.fn() })
 const mockTerminalAttachCustomKeyEventHandler = vi.fn()
 const mockTerminalResize = vi.fn()
 
+const mockRegisterCsiHandler = vi.fn().mockReturnValue({ dispose: vi.fn() })
+
 vi.mock('@xterm/xterm', () => {
   return {
     Terminal: class MockTerminal {
@@ -40,6 +42,7 @@ vi.mock('@xterm/xterm', () => {
       cols = 80
       rows = 24
       buffer = { active: { viewportY: 0, baseY: 0 } }
+      parser = { registerCsiHandler: mockRegisterCsiHandler }
     },
   }
 })

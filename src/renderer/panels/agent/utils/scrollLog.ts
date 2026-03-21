@@ -9,8 +9,6 @@
  * the Cmd+Shift+C debug dump.
  */
 
-import { Terminal as XTerm } from '@xterm/xterm'
-
 export type ScrollSource =
   | 'wheel-up'
   | 'wheel-down'
@@ -19,8 +17,6 @@ export type ScrollSource =
   | 'key-shift-arrow'
   | 'xterm-scroll'       // onScroll event with no recent user gesture
   | 'scroll-to-bottom'   // explicit handleScrollToBottom call
-  | 'scroll-restored'    // defensive restore after unexpected jump
-  | 'write'              // data write happened
   | 'resize'             // fitAddon.fit() / terminal.resize()
 
 export interface ScrollEvent {
@@ -90,72 +86,4 @@ export const scrollLogRegistry = {
   format(sessionId: string): string {
     return logs.get(sessionId)?.format() ?? '(no scroll log)'
   },
-}
-
-// ── Scroll lock ────────────────────────────────────────────────────
-//
-// Locks the xterm viewport position (viewportY) so it can only change when:
-//   1. The viewport is at the bottom (following) — output naturally pushes down.
-//   2. The user explicitly scrolled (wheel, key, or "Go to End" button).
-//
-// xterm.js 6 with the canvas renderer does NOT use the DOM .xterm-viewport
-// element for scrolling — scrollHeight always equals clientHeight and
-// scrollTop is always 0. So we operate entirely at xterm's buffer level
-// using terminal.onScroll and terminal.scrollToLine.
-
-export interface ScrollLockDeps {
-  terminal: XTerm
-  lastUserGestureTime: () => number
-  scrollLog: ScrollLog
-  viewportEl: HTMLElement | null
-}
-
-export interface ScrollLockHandle {
-  cleanup: () => void
-}
-
-export function setupScrollLock(deps: ScrollLockDeps): ScrollLockHandle {
-  const { terminal, lastUserGestureTime, scrollLog, viewportEl } = deps
-  let savedViewportY = terminal.buffer.active.viewportY
-  let isRestoring = false
-
-  const onScrollDisposable = terminal.onScroll((newViewportY: number) => {
-    if (isRestoring) return
-
-    const baseY = terminal.buffer.active.baseY
-    const isAtBottom = newViewportY >= baseY
-
-    if (isAtBottom) {
-      // At the bottom — allow (new output pushing down, or user scrolled to end).
-      savedViewportY = newViewportY
-      return
-    }
-
-    const timeSinceGesture = Date.now() - lastUserGestureTime()
-    if (timeSinceGesture < 500) {
-      // User just scrolled — allow and save.
-      savedViewportY = newViewportY
-      return
-    }
-
-    // Not at bottom, no recent user gesture — unauthorized move. Revert.
-    if (newViewportY !== savedViewportY) {
-      scrollLog.add({
-        source: 'scroll-restored',
-        viewportY: newViewportY,
-        baseY,
-        scrollTop: viewportEl?.scrollTop,
-        scrollHeight: viewportEl?.scrollHeight,
-        clientHeight: viewportEl?.clientHeight,
-        following: false,
-        detail: `viewportY ${savedViewportY} -> ${newViewportY} with no gesture (${timeSinceGesture}ms ago) -- reverting`,
-      })
-      isRestoring = true
-      terminal.scrollToLine(savedViewportY)
-      isRestoring = false
-      return
-    }
-  })
-
-  return { cleanup: () => onScrollDisposable.dispose() }
 }

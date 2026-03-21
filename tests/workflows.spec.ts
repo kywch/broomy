@@ -280,9 +280,11 @@ test.describe('Session Creation', () => {
     // Dialog should close
     await expect(page.locator('h2:has-text("Select Agent")')).not.toBeVisible()
 
-    // Should have one more session
-    const finalCount = await page.locator('.cursor-pointer').filter({ has: page.locator('span.truncate') }).count()
-    expect(finalCount).toBeGreaterThan(initialCount)
+    // Should have one more session (wait for React to re-render)
+    await expect.poll(
+      () => page.locator('.cursor-pointer').filter({ has: page.locator('span.truncate') }).count(),
+      { timeout: 10000 },
+    ).toBeGreaterThan(initialCount)
 
     // Take screenshot of new session
     await diagnosticScreenshot(electronApp, page, 'test-results/session-created.png')
