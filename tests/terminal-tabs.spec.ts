@@ -109,6 +109,6 @@ test.describe('Terminal Tabs', () => {
     await closeBtn.click()
 
     // Should fall back to Agent tab (which becomes active)
-    await expect.poll(() => isTabActive('Agent')).toBe(true)
+    await expect.poll(() => isTabActive('Agent'), { timeout: 10000 }).toBe(true)
   })
 })

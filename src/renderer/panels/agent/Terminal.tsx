@@ -16,6 +16,7 @@ import { useErrorStore } from '../../store/errors'
 import { getAgentInstallUrl } from '../../shared/utils/agentInstallUrls'
 import { sendAgentPrompt } from '../../shared/utils/focusHelpers'
 import '@xterm/xterm/css/xterm.css'
+import './terminal-scroll.css'
 
 interface TerminalProps {
   sessionId?: string

@@ -1,5 +1,15 @@
 /**
- * Sets up and manages the xterm.js terminal instance including PTY creation, resize handling, buffer restoration, and scroll tracking.
+ * Sets up and manages the xterm.js terminal instance including PTY creation,
+ * resize handling, buffer restoration, and scroll tracking.
+ *
+ * Scroll strategy (Wave Terminal approach):
+ * - Trust xterm.js's built-in scroll management — don't fight it.
+ * - Use a generous "at bottom" threshold (50% of viewport height) to avoid
+ *   false "user scrolled up" detection from small perturbations.
+ * - Track "recently at bottom" with a 1-second window for resize resilience.
+ * - Cache at-bottom state in ResizeObserver before debounced fit runs.
+ * - Repaint transactions (CSI 3 J inside DEC mode 2026) are detected in
+ *   ptyDataHandler.ts and trigger a scroll-to-bottom after repaint completes.
  */
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { Terminal as XTerm } from '@xterm/xterm'
@@ -12,7 +22,7 @@ import { terminalBufferRegistry } from '../../../shared/utils/terminalBufferRegi
 import { useTerminalKeyboard } from './useTerminalKeyboard'
 import { usePlanDetection } from '../../../features/git/hooks/usePlanDetection'
 import { createPtyDataHandler } from './ptyDataHandler'
-import { ScrollLog, scrollLogRegistry, setupScrollLock } from '../utils/scrollLog'
+import { ScrollLog, scrollLogRegistry } from '../utils/scrollLog'
 import type { ScrollSource } from '../utils/scrollLog'
 
 export interface TerminalConfig {
@@ -72,47 +82,37 @@ const XTERM_THEME = {
   brightWhite: '#ffffff',
 } as const
 
-// ── Viewport helpers factory ─────────────────────────────────────────
+// ── At-bottom detection (Wave Terminal approach) ─────────────────────
+//
+// Uses a generous threshold: within 50% of viewport height counts as
+// "at bottom". This prevents false "user scrolled up" detection from
+// small scroll perturbations during resize or output bursts.
 
-export interface ViewportHelpers {
-  isAtBottom: () => boolean
+function isAtBottom(viewportEl: HTMLElement | null): boolean {
+  if (!viewportEl) return true
+  const { scrollTop, scrollHeight, clientHeight } = viewportEl
+  return scrollTop + clientHeight >= scrollHeight - clientHeight * 0.5
 }
 
-function createViewportHelpers(terminal: XTerm): ViewportHelpers {
-  const isAtBottom = () => {
-    const buffer = terminal.buffer.active
-    return buffer.viewportY >= buffer.baseY
-  }
-
-  return { isAtBottom }
-}
-
-// ── Scroll tracking setup ────────────────────────────────────────────
-
-interface ScrollTrackingState {
-  pendingScrollRAF: number
-  /** Timestamp of the last user-initiated scroll gesture (wheel/key). */
-  lastUserGestureTime: number
-}
+// ── Scroll tracking ─────────────────────────────────────────────────
+//
+// Simplified scroll tracking that observes user gestures (wheel, keyboard)
+// to manage the "Go to End" button and following state.
 
 interface ScrollTrackingResult {
-  state: ScrollTrackingState
   updateFollowingFromScroll: (e: Event) => void
   handleKeyScroll: (e: KeyboardEvent) => void
 }
 
 interface ScrollTrackingArgs {
   terminal: XTerm
-  helpers: ViewportHelpers
-  isFollowingRef: React.MutableRefObject<boolean>
   setShowScrollButton: React.Dispatch<React.SetStateAction<boolean>>
   scrollLog: ScrollLog
   viewportEl: HTMLElement | null
 }
 
 function createScrollTracking(args: ScrollTrackingArgs): ScrollTrackingResult {
-  const { terminal, helpers, isFollowingRef, setShowScrollButton, scrollLog, viewportEl } = args
-  const state: ScrollTrackingState = { pendingScrollRAF: 0, lastUserGestureTime: 0 }
+  const { terminal, setShowScrollButton, scrollLog, viewportEl } = args
 
   const logScroll = (source: ScrollSource, detail?: string) => {
     scrollLog.add({
@@ -122,81 +122,103 @@ function createScrollTracking(args: ScrollTrackingArgs): ScrollTrackingResult {
       scrollTop: viewportEl?.scrollTop,
       scrollHeight: viewportEl?.scrollHeight,
       clientHeight: viewportEl?.clientHeight,
-      following: isFollowingRef.current,
+      following: isAtBottom(viewportEl),
       detail,
     })
   }
 
   const updateFollowingFromScroll = (e: Event) => {
-    const isScrollUp = e instanceof WheelEvent && e.deltaY < 0
-    if (isScrollUp) {
-      state.lastUserGestureTime = Date.now()
-      isFollowingRef.current = false
+    if (e instanceof WheelEvent && e.deltaY < 0) {
       logScroll('wheel-up')
-      if (state.pendingScrollRAF) {
-        cancelAnimationFrame(state.pendingScrollRAF)
-        state.pendingScrollRAF = 0
-      }
     } else {
-      state.lastUserGestureTime = Date.now()
       logScroll('wheel-down')
     }
 
     requestAnimationFrame(() => {
-      const atBottom = helpers.isAtBottom()
-      if (!isScrollUp) {
-        isFollowingRef.current = atBottom
-      }
+      const atBottom = isAtBottom(viewportEl)
       setShowScrollButton(!atBottom && terminal.buffer.active.baseY > 0)
     })
   }
 
   const handleKeyScroll = (e: KeyboardEvent) => {
     if (e.key === 'PageUp' || (e.shiftKey && e.key === 'ArrowUp')) {
-      state.lastUserGestureTime = Date.now()
-      isFollowingRef.current = false
       logScroll(e.key === 'PageUp' ? 'key-pageup' : 'key-shift-arrow')
-      if (state.pendingScrollRAF) {
-        cancelAnimationFrame(state.pendingScrollRAF)
-        state.pendingScrollRAF = 0
-      }
     }
     if (e.key === 'PageUp' || e.key === 'PageDown' ||
         (e.shiftKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown'))) {
-      state.lastUserGestureTime = Date.now()
       requestAnimationFrame(() => {
-        const atBottom = helpers.isAtBottom()
-        isFollowingRef.current = atBottom
+        const atBottom = isAtBottom(viewportEl)
         setShowScrollButton(!atBottom && terminal.buffer.active.baseY > 0)
       })
     }
   }
 
-  return { state, updateFollowingFromScroll, handleKeyScroll }
+  return { updateFollowingFromScroll, handleKeyScroll }
 }
 
-// ── Resize observer with scroll logging ─────────────────────────────
+// ── Resize observer with at-bottom caching ──────────────────────────
+//
+// Wave Terminal approach: capture at-bottom state in the ResizeObserver
+// callback BEFORE the debounced fit runs. After fit, if we were at bottom,
+// scroll back to bottom with a short delay.
 
 interface ResizeObserverSetup {
   observer: ResizeObserver
   cleanup: () => void
 }
 
-interface ResizeObserverLogArgs {
+interface ResizeObserverArgs {
   terminal: XTerm; fitAddon: FitAddon; ptyIdRef: React.MutableRefObject<string | null>
-  isActiveRef: React.MutableRefObject<boolean>; isFollowingRef: React.MutableRefObject<boolean>
+  isActiveRef: React.MutableRefObject<boolean>
   scrollLog: ScrollLog; viewportEl: HTMLElement | null
 }
 
-function createResizeObserverWithLog(args: ResizeObserverLogArgs): ResizeObserverSetup {
-  const { terminal, fitAddon, ptyIdRef, isActiveRef, isFollowingRef, scrollLog, viewportEl } = args
+/** Time window (ms) during which wasRecentlyAtBottom() returns true. */
+const RECENTLY_AT_BOTTOM_MS = 1000
+
+function createResizeObserver(args: ResizeObserverArgs): ResizeObserverSetup {
+  const { terminal, fitAddon, ptyIdRef, isActiveRef, scrollLog, viewportEl } = args
   let ptyResizeTimeout: ReturnType<typeof setTimeout> | null = null
+  let scrollToBottomTimeout: ReturnType<typeof setTimeout> | null = null
+
+  // Track "recently at bottom" — true if at bottom now OR was within the last second
+  let lastAtBottomTime = Date.now()
+  let lastScrollAtBottom = true
+
+  const setAtBottom = (atBottom: boolean) => {
+    lastScrollAtBottom = atBottom
+    if (atBottom) lastAtBottomTime = Date.now()
+  }
+
+  const wasRecentlyAtBottom = () => {
+    if (lastScrollAtBottom) return true
+    return Date.now() - lastAtBottomTime <= RECENTLY_AT_BOTTOM_MS
+  }
+
+  // Track at-bottom state via viewport scroll events
+  if (viewportEl) {
+    viewportEl.addEventListener('scroll', () => {
+      setAtBottom(isAtBottom(viewportEl))
+    })
+  }
+
+  // Cached at-bottom state captured immediately in the ResizeObserver
+  // callback, before the debounced fit runs.
+  let cachedAtBottomForResize: boolean | null = null
+
   const observer = new ResizeObserver((entries) => {
     if (!isActiveRef.current) return
     const entry = entries[0] as ResizeObserverEntry | undefined
     if (!entry || entry.contentRect.width === 0 || entry.contentRect.height === 0) return
+
+    // Capture at-bottom state NOW, before the debounced fit changes dimensions
+    cachedAtBottomForResize = wasRecentlyAtBottom()
+
     if (ptyResizeTimeout) clearTimeout(ptyResizeTimeout)
     ptyResizeTimeout = setTimeout(() => {
+      const atBottomBeforeFit = cachedAtBottomForResize
+      cachedAtBottomForResize = null
+
       const oldCols = terminal.cols
       const oldRows = terminal.rows
       try { fitAddon.fit() } catch { /* ignore */ }
@@ -208,16 +230,33 @@ function createResizeObserverWithLog(args: ResizeObserverLogArgs): ResizeObserve
           scrollTop: viewportEl?.scrollTop,
           scrollHeight: viewportEl?.scrollHeight,
           clientHeight: viewportEl?.clientHeight,
-          following: isFollowingRef.current,
+          following: isAtBottom(viewportEl),
           detail: `${oldCols}x${oldRows} -> ${terminal.cols}x${terminal.rows}`,
         })
       }
       if (ptyIdRef.current && terminal.cols > 0 && terminal.rows > 0) {
         void window.pty.resize(ptyIdRef.current, terminal.cols, terminal.rows)
       }
+
+      // If we were at bottom before resize, scroll back to bottom after
+      // xterm has had a chance to reflow content.
+      if (atBottomBeforeFit) {
+        if (scrollToBottomTimeout) clearTimeout(scrollToBottomTimeout)
+        scrollToBottomTimeout = setTimeout(() => {
+          terminal.scrollToBottom()
+          setAtBottom(true)
+          scrollToBottomTimeout = null
+        }, 20)
+      }
     }, 100)
   })
-  const cleanup = () => { observer.disconnect(); if (ptyResizeTimeout) clearTimeout(ptyResizeTimeout) }
+
+  const cleanup = () => {
+    observer.disconnect()
+    if (ptyResizeTimeout) clearTimeout(ptyResizeTimeout)
+    if (scrollToBottomTimeout) clearTimeout(scrollToBottomTimeout)
+  }
+
   return { observer, cleanup }
 }
 
@@ -236,7 +275,6 @@ function useTerminalState(config: TerminalConfig) {
   const lastUserInputRef = useRef<number>(0)
   const lastInteractionRef = useRef<number>(0)
   const ptyIdRef = useRef<string | null>(null)
-  const isFollowingRef = useRef(true)
   const [showScrollButton, setShowScrollButton] = useState(false)
 
   const isActiveRef = useRef(true)
@@ -291,14 +329,13 @@ function useTerminalState(config: TerminalConfig) {
 
   const handleScrollToBottom = useCallback(() => {
     terminalRef.current?.scrollToBottom()
-    isFollowingRef.current = true
     setShowScrollButton(false)
   }, [])
 
   return {
     terminalRef, fitAddonRef, serializeAddonRef, cleanupRef,
     updateTimeoutRef, idleTimeoutRef, lastStatusRef,
-    lastUserInputRef, lastInteractionRef, ptyIdRef, isFollowingRef,
+    lastUserInputRef, lastInteractionRef, ptyIdRef,
     isActiveRef,
     showScrollButton, setShowScrollButton,
     exitInfo, setExitInfo,
@@ -366,7 +403,6 @@ export function useTerminalSetup(
       try { return serializeAddon.serialize() } catch { return '' }
     })
 
-    const helpers = createViewportHelpers(terminal)
     const viewportEl = containerRef.current.querySelector<HTMLElement>('.xterm-viewport')
 
     // ── Scroll event log for debugging ──────────────────────────────
@@ -374,25 +410,17 @@ export function useTerminalSetup(
     scrollLogRegistry.register(registryKey, scrollLog)
 
     const scrollTracking = createScrollTracking({
-      terminal, helpers, isFollowingRef: s.isFollowingRef,
-      setShowScrollButton: s.setShowScrollButton, scrollLog, viewportEl,
+      terminal, setShowScrollButton: s.setShowScrollButton, scrollLog, viewportEl,
     })
 
-    const scrollLock = viewportEl
-      ? setupScrollLock({
-        terminal, isFollowingRef: s.isFollowingRef,
-        lastUserGestureTime: () => scrollTracking.state.lastUserGestureTime,
-        scrollLog, viewportEl,
-      })
-      : { cleanup: () => {} }
-
+    // Update scroll button visibility on render
     let onRenderRAF = 0
     terminal.onRender(() => {
-      if (!s.isActiveRef.current) return // skip render work for background terminals
+      if (!s.isActiveRef.current) return
       if (onRenderRAF) return
       onRenderRAF = requestAnimationFrame(() => {
         onRenderRAF = 0
-        const atBottom = helpers.isAtBottom()
+        const atBottom = isAtBottom(viewportEl)
         const shouldShow = !atBottom && terminal.buffer.active.baseY > 0
         s.setShowScrollButton(prev => prev === shouldShow ? prev : shouldShow)
       })
@@ -489,9 +517,9 @@ export function useTerminalSetup(
         terminal.write(`\x1b[33m${err instanceof Error ? err.message : String(err)}\x1b[0m\r\n`)
       })
 
-    const resizeSetup = createResizeObserverWithLog({
+    const resizeSetup = createResizeObserver({
       terminal, fitAddon, ptyIdRef: s.ptyIdRef, isActiveRef: s.isActiveRef,
-      isFollowingRef: s.isFollowingRef, scrollLog, viewportEl,
+      scrollLog, viewportEl,
     })
     const containerEl = containerRef.current
     resizeSetup.observer.observe(containerEl)
@@ -501,8 +529,6 @@ export function useTerminalSetup(
       scrollContainer.removeEventListener('touchmove', scrollTracking.updateFollowingFromScroll)
       scrollContainer.removeEventListener('keydown', scrollTracking.handleKeyScroll)
       resizeSetup.cleanup()
-      scrollLock.cleanup()
-      if (scrollTracking.state.pendingScrollRAF) cancelAnimationFrame(scrollTracking.state.pendingScrollRAF)
       if (onRenderRAF) cancelAnimationFrame(onRenderRAF)
       s.cleanupRef.current?.()
       if (s.ptyIdRef.current) { void window.pty.kill(s.ptyIdRef.current); s.ptyIdRef.current = null }
