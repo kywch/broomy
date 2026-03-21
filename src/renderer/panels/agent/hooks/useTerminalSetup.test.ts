@@ -18,6 +18,7 @@ const mockTerminalScrollToLine = vi.fn()
 const mockTerminalLoadAddon = vi.fn()
 const mockTerminalOnData = vi.fn().mockReturnValue({ dispose: vi.fn() })
 const mockTerminalOnRender = vi.fn().mockReturnValue({ dispose: vi.fn() })
+const mockTerminalOnScroll = vi.fn().mockReturnValue({ dispose: vi.fn() })
 const mockTerminalAttachCustomKeyEventHandler = vi.fn()
 const mockTerminalResize = vi.fn()
 
@@ -33,6 +34,7 @@ vi.mock('@xterm/xterm', () => {
       loadAddon = mockTerminalLoadAddon
       onData = mockTerminalOnData
       onRender = mockTerminalOnRender
+      onScroll = mockTerminalOnScroll
       attachCustomKeyEventHandler = mockTerminalAttachCustomKeyEventHandler
       resize = mockTerminalResize
       cols = 80
