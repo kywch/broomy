@@ -140,10 +140,10 @@ describe('createPtyDataHandler', () => {
       vi.useFakeTimers()
 
       // Capture the CSI handler callbacks
-      const handlers: { prefix?: string; final: string; cb: (params: (number | number[])[]) => boolean | Promise<boolean> }[] = []
+      const handlers: { prefix?: string; final: string; cb: (params: (number | number[])[]) => void }[] = []
       vi.mocked(terminal.parser.registerCsiHandler).mockImplementation(
         (id: { prefix?: string; final: string }, cb: (params: (number | number[])[]) => boolean | Promise<boolean>) => {
-          handlers.push({ ...id, cb })
+          handlers.push({ ...id, cb: cb as (params: (number | number[])[]) => void })
           return { dispose: vi.fn() }
         },
       )
@@ -171,10 +171,10 @@ describe('createPtyDataHandler', () => {
     it('does not scroll to bottom if CSI 3 J is not inside a sync transaction', () => {
       vi.useFakeTimers()
 
-      const handlers: { prefix?: string; final: string; cb: (params: (number | number[])[]) => boolean | Promise<boolean> }[] = []
+      const handlers: { prefix?: string; final: string; cb: (params: (number | number[])[]) => void }[] = []
       vi.mocked(terminal.parser.registerCsiHandler).mockImplementation(
         (id: { prefix?: string; final: string }, cb: (params: (number | number[])[]) => boolean | Promise<boolean>) => {
-          handlers.push({ ...id, cb })
+          handlers.push({ ...id, cb: cb as (params: (number | number[])[]) => void })
           return { dispose: vi.fn() }
         },
       )
@@ -197,10 +197,10 @@ describe('createPtyDataHandler', () => {
     it('does not scroll if repaint transaction exceeds timeout', () => {
       vi.useFakeTimers()
 
-      const handlers: { prefix?: string; final: string; cb: (params: (number | number[])[]) => boolean | Promise<boolean> }[] = []
+      const handlers: { prefix?: string; final: string; cb: (params: (number | number[])[]) => void }[] = []
       vi.mocked(terminal.parser.registerCsiHandler).mockImplementation(
         (id: { prefix?: string; final: string }, cb: (params: (number | number[])[]) => boolean | Promise<boolean>) => {
-          handlers.push({ ...id, cb })
+          handlers.push({ ...id, cb: cb as (params: (number | number[])[]) => void })
           return { dispose: vi.fn() }
         },
       )
@@ -242,10 +242,10 @@ describe('createPtyDataHandler', () => {
     it('ignores non-2026 DEC mode params', () => {
       vi.useFakeTimers()
 
-      const handlers: { prefix?: string; final: string; cb: (params: (number | number[])[]) => boolean | Promise<boolean> }[] = []
+      const handlers: { prefix?: string; final: string; cb: (params: (number | number[])[]) => void }[] = []
       vi.mocked(terminal.parser.registerCsiHandler).mockImplementation(
         (id: { prefix?: string; final: string }, cb: (params: (number | number[])[]) => boolean | Promise<boolean>) => {
-          handlers.push({ ...id, cb })
+          handlers.push({ ...id, cb: cb as (params: (number | number[])[]) => void })
           return { dispose: vi.fn() }
         },
       )
@@ -270,10 +270,10 @@ describe('createPtyDataHandler', () => {
     it('ignores non-3 erase params (e.g. CSI 2 J)', () => {
       vi.useFakeTimers()
 
-      const handlers: { prefix?: string; final: string; cb: (params: (number | number[])[]) => boolean | Promise<boolean> }[] = []
+      const handlers: { prefix?: string; final: string; cb: (params: (number | number[])[]) => void }[] = []
       vi.mocked(terminal.parser.registerCsiHandler).mockImplementation(
         (id: { prefix?: string; final: string }, cb: (params: (number | number[])[]) => boolean | Promise<boolean>) => {
-          handlers.push({ ...id, cb })
+          handlers.push({ ...id, cb: cb as (params: (number | number[])[]) => void })
           return { dispose: vi.fn() }
         },
       )

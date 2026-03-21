@@ -426,10 +426,14 @@ export function useTerminalSetup(
       })
     })
 
-    containerRef.current.addEventListener('wheel', scrollTracking.updateFollowingFromScroll, { passive: true })
-    containerRef.current.addEventListener('touchmove', scrollTracking.updateFollowingFromScroll, { passive: true })
-    containerRef.current.addEventListener('keydown', scrollTracking.handleKeyScroll)
+    // Use CAPTURE phase on the container so our handlers fire BEFORE xterm's
+    // handlers on child elements. xterm.js 6 handles wheel events on its canvas
+    // and may call stopPropagation(), but capture-phase listeners on an ancestor
+    // fire during the capture phase (top-down) before the target phase.
     const scrollContainer = containerRef.current
+    scrollContainer.addEventListener('wheel', scrollTracking.updateFollowingFromScroll, { capture: true, passive: true })
+    scrollContainer.addEventListener('touchmove', scrollTracking.updateFollowingFromScroll, { capture: true, passive: true })
+    scrollContainer.addEventListener('keydown', scrollTracking.handleKeyScroll, { capture: true })
 
     requestAnimationFrame(() => {
       if (containerRef.current && containerRef.current.offsetWidth > 0 && containerRef.current.offsetHeight > 0) {
@@ -525,9 +529,9 @@ export function useTerminalSetup(
     resizeSetup.observer.observe(containerEl)
 
     return () => {
-      scrollContainer.removeEventListener('wheel', scrollTracking.updateFollowingFromScroll)
-      scrollContainer.removeEventListener('touchmove', scrollTracking.updateFollowingFromScroll)
-      scrollContainer.removeEventListener('keydown', scrollTracking.handleKeyScroll)
+      scrollContainer.removeEventListener('wheel', scrollTracking.updateFollowingFromScroll, { capture: true })
+      scrollContainer.removeEventListener('touchmove', scrollTracking.updateFollowingFromScroll, { capture: true })
+      scrollContainer.removeEventListener('keydown', scrollTracking.handleKeyScroll, { capture: true })
       resizeSetup.cleanup()
       if (onRenderRAF) cancelAnimationFrame(onRenderRAF)
       s.cleanupRef.current?.()
