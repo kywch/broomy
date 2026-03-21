@@ -398,10 +398,17 @@ export function useTerminalSetup(
       })
     })
 
-    containerRef.current.addEventListener('wheel', scrollTracking.updateFollowingFromScroll, { passive: true })
-    containerRef.current.addEventListener('touchmove', scrollTracking.updateFollowingFromScroll, { passive: true })
-    containerRef.current.addEventListener('keydown', scrollTracking.handleKeyScroll)
-    const scrollContainer = containerRef.current
+    // Attach scroll-tracking listeners to the xterm VIEWPORT element, not the
+    // outer container. xterm.js intercepts wheel events on its viewport and calls
+    // stopPropagation(), so listeners on parent elements never fire. By listening
+    // on the same element, our handler is guaranteed to run (only
+    // stopImmediatePropagation would block it, and xterm doesn't use that).
+    // Fall back to the container if viewport wasn't found (shouldn't happen).
+    const scrollEventTarget = viewportEl ?? containerRef.current
+    scrollEventTarget.addEventListener('wheel', scrollTracking.updateFollowingFromScroll, { passive: true })
+    scrollEventTarget.addEventListener('touchmove', scrollTracking.updateFollowingFromScroll, { passive: true })
+    scrollEventTarget.addEventListener('keydown', scrollTracking.handleKeyScroll)
+    const scrollContainer = scrollEventTarget
 
     requestAnimationFrame(() => {
       if (containerRef.current && containerRef.current.offsetWidth > 0 && containerRef.current.offsetHeight > 0) {
