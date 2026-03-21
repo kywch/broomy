@@ -9,6 +9,8 @@
  * the Cmd+Shift+C debug dump.
  */
 
+import { Terminal as XTerm } from '@xterm/xterm'
+
 export type ScrollSource =
   | 'wheel-up'
   | 'wheel-down'
@@ -88,4 +90,86 @@ export const scrollLogRegistry = {
   format(sessionId: string): string {
     return logs.get(sessionId)?.format() ?? '(no scroll log)'
   },
+}
+
+// ── Scroll lock ────────────────────────────────────────────────────
+//
+// Locks the xterm viewport's scrollTop so it can only change when:
+//   1. The user is following (at bottom) — new output naturally pushes down.
+//   2. The user explicitly scrolled (wheel, key, or "Go to End" button).
+//
+// Any other scrollTop change (e.g. xterm reflow, DOM reattach, spacer
+// height glitch) is immediately reverted and logged.
+
+export interface ScrollLockDeps {
+  terminal: XTerm
+  isFollowingRef: React.MutableRefObject<boolean>
+  lastUserGestureTime: () => number
+  scrollLog: ScrollLog
+  viewportEl: HTMLElement
+}
+
+export interface ScrollLockHandle {
+  cleanup: () => void
+}
+
+export function setupScrollLock(deps: ScrollLockDeps): ScrollLockHandle {
+  const { terminal, isFollowingRef, lastUserGestureTime, scrollLog, viewportEl } = deps
+  let savedScrollTop = viewportEl.scrollTop
+  let isRestoring = false
+
+  const handleScroll = () => {
+    if (isRestoring) return
+    const newScrollTop = viewportEl.scrollTop
+
+    if (isFollowingRef.current) {
+      savedScrollTop = newScrollTop
+      return
+    }
+
+    const timeSinceGesture = Date.now() - lastUserGestureTime()
+    if (timeSinceGesture < 300) {
+      savedScrollTop = newScrollTop
+      return
+    }
+
+    // No user gesture, not following — revert.
+    if (newScrollTop !== savedScrollTop) {
+      scrollLog.add({
+        source: 'scroll-restored',
+        viewportY: terminal.buffer.active.viewportY,
+        baseY: terminal.buffer.active.baseY,
+        scrollTop: newScrollTop,
+        scrollHeight: viewportEl.scrollHeight,
+        clientHeight: viewportEl.clientHeight,
+        following: false,
+        detail: `scrollTop ${savedScrollTop} -> ${newScrollTop} with no gesture (${timeSinceGesture}ms ago) -- reverting`,
+      })
+      isRestoring = true
+      viewportEl.scrollTop = savedScrollTop
+      isRestoring = false
+    }
+  }
+
+  viewportEl.addEventListener('scroll', handleScroll)
+
+  // Also log via xterm's onScroll for buffer-level position tracking.
+  terminal.onScroll((newViewportY: number) => {
+    if (isRestoring) return
+    const timeSinceGesture = Date.now() - lastUserGestureTime()
+    if (!isFollowingRef.current && timeSinceGesture >= 300) {
+      scrollLog.add({
+        source: 'xterm-scroll',
+        viewportY: newViewportY,
+        baseY: terminal.buffer.active.baseY,
+        scrollTop: viewportEl.scrollTop,
+        scrollHeight: viewportEl.scrollHeight,
+        clientHeight: viewportEl.clientHeight,
+        following: false,
+        detail: `no gesture for ${timeSinceGesture}ms`,
+      })
+    }
+  })
+
+  return { cleanup: () => viewportEl.removeEventListener('scroll', handleScroll) }
 }

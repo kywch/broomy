@@ -12,7 +12,7 @@ import { terminalBufferRegistry } from '../../../shared/utils/terminalBufferRegi
 import { useTerminalKeyboard } from './useTerminalKeyboard'
 import { usePlanDetection } from '../../../features/git/hooks/usePlanDetection'
 import { createPtyDataHandler } from './ptyDataHandler'
-import { ScrollLog, scrollLogRegistry } from '../utils/scrollLog'
+import { ScrollLog, scrollLogRegistry, setupScrollLock } from '../utils/scrollLog'
 import type { ScrollSource } from '../utils/scrollLog'
 
 export interface TerminalConfig {
@@ -173,52 +173,6 @@ function createScrollTracking(args: ScrollTrackingArgs): ScrollTrackingResult {
   }
 
   return { state, updateFollowingFromScroll, handleKeyScroll }
-}
-
-// ── Scroll defense: detect and restore unexpected viewport jumps ─────
-
-function setupScrollDefense(
-  terminal: XTerm,
-  isFollowingRef: React.MutableRefObject<boolean>,
-  scrollTracking: ScrollTrackingResult,
-  scrollLog: ScrollLog,
-  viewportEl: HTMLElement | null,
-) {
-  let lastKnownViewportY = 0
-
-  terminal.onScroll((newViewportY: number) => {
-    const timeSinceGesture = Date.now() - scrollTracking.state.lastUserGestureTime
-    const wasUserGesture = timeSinceGesture < 300
-
-    if (!isFollowingRef.current && !wasUserGesture) {
-      const jumpDistance = Math.abs(newViewportY - lastKnownViewportY)
-      if (jumpDistance > terminal.rows && lastKnownViewportY > 0) {
-        scrollLog.add({
-          source: 'scroll-restored',
-          viewportY: newViewportY,
-          baseY: terminal.buffer.active.baseY,
-          scrollTop: viewportEl?.scrollTop,
-          scrollHeight: viewportEl?.scrollHeight,
-          clientHeight: viewportEl?.clientHeight,
-          following: false,
-          detail: `unexpected jump from ${lastKnownViewportY} to ${newViewportY} (${jumpDistance} lines, no gesture for ${timeSinceGesture}ms) -- restoring`,
-        })
-        terminal.scrollToLine(lastKnownViewportY)
-        return
-      }
-      scrollLog.add({
-        source: 'xterm-scroll',
-        viewportY: newViewportY,
-        baseY: terminal.buffer.active.baseY,
-        scrollTop: viewportEl?.scrollTop,
-        scrollHeight: viewportEl?.scrollHeight,
-        clientHeight: viewportEl?.clientHeight,
-        following: false,
-        detail: `from ${lastKnownViewportY} (no gesture for ${timeSinceGesture}ms)`,
-      })
-    }
-    lastKnownViewportY = newViewportY
-  })
 }
 
 // ── Resize observer with scroll logging ─────────────────────────────
@@ -424,7 +378,13 @@ export function useTerminalSetup(
       setShowScrollButton: s.setShowScrollButton, scrollLog, viewportEl,
     })
 
-    setupScrollDefense(terminal, s.isFollowingRef, scrollTracking, scrollLog, viewportEl)
+    const scrollLock = viewportEl
+      ? setupScrollLock({
+        terminal, isFollowingRef: s.isFollowingRef,
+        lastUserGestureTime: () => scrollTracking.state.lastUserGestureTime,
+        scrollLog, viewportEl,
+      })
+      : { cleanup: () => {} }
 
     let onRenderRAF = 0
     terminal.onRender(() => {
@@ -541,6 +501,7 @@ export function useTerminalSetup(
       scrollContainer.removeEventListener('touchmove', scrollTracking.updateFollowingFromScroll)
       scrollContainer.removeEventListener('keydown', scrollTracking.handleKeyScroll)
       resizeSetup.cleanup()
+      scrollLock.cleanup()
       if (scrollTracking.state.pendingScrollRAF) cancelAnimationFrame(scrollTracking.state.pendingScrollRAF)
       if (onRenderRAF) cancelAnimationFrame(onRenderRAF)
       s.cleanupRef.current?.()
