@@ -22,7 +22,7 @@ function makeState() {
     lastUserInputRef: { current: 0 },
     lastInteractionRef: { current: 0 },
     lastStatusRef: { current: 'idle' as const },
-    idleTimeoutRef: { current: null },
+    idleTimeoutRef: { current: null } as { current: ReturnType<typeof setTimeout> | null },
     scheduleUpdate: vi.fn(),
   }
 }

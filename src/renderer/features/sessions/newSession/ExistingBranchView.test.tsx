@@ -303,7 +303,7 @@ describe('ExistingBranchView', () => {
     ])
     vi.mocked(window.git.worktreeAdd).mockResolvedValue({ success: true })
     vi.mocked(window.repos.getInitScript).mockResolvedValue('pnpm install')
-    vi.mocked(window.shell.exec).mockResolvedValue({ stdout: '', stderr: '', exitCode: 0 })
+    vi.mocked(window.shell.exec).mockResolvedValue({ success: true, stdout: '', stderr: '', exitCode: 0 })
 
     const onComplete = vi.fn()
     render(

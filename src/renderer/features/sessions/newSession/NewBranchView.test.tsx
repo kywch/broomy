@@ -360,9 +360,9 @@ describe('NewBranchView', () => {
     render(
       <NewBranchView repo={mockRepo} onBack={vi.fn()} onComplete={vi.fn()} />
     )
-    const select = screen.getByDisplayValue('Claude') as HTMLSelectElement
+    const select = screen.getByDisplayValue('Claude')
     fireEvent.change(select, { target: { value: '' } })
-    expect(select.value).toBe('')
+    expect((select as HTMLSelectElement).value).toBe('')
   })
 
   it('shows NO_WRITE_ACCESS error and cleans up worktree', async () => {
