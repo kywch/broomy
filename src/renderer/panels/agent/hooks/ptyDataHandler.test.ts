@@ -22,7 +22,7 @@ function makeState() {
     lastUserInputRef: { current: 0 },
     lastInteractionRef: { current: 0 },
     lastStatusRef: { current: 'idle' as const },
-    idleTimeoutRef: { current: null },
+    idleTimeoutRef: { current: null } as { current: ReturnType<typeof setTimeout> | null },
     scheduleUpdate: vi.fn(),
   }
 }
@@ -155,11 +155,93 @@ describe('createPtyDataHandler', () => {
     expect(state.processPlanDetection).not.toHaveBeenCalled()
   })
 
+  it('schedules idle timeout when scheduleIdle is true and status is not working', async () => {
+    vi.useFakeTimers()
+    const { evaluateActivity } = await import('../utils/terminalActivityDetector')
+    vi.mocked(evaluateActivity).mockReturnValue({ status: null, scheduleIdle: true })
+
+    const handler = createHandler({ isAgent: true })
+    handler.handleData('output')
+
+    // Idle timeout not yet fired
+    expect(state.scheduleUpdate).not.toHaveBeenCalledWith({ status: 'idle' })
+
+    // Existing idle timeout should have been cleared and a new one scheduled
+    vi.advanceTimersByTime(1000)
+    expect(state.lastStatusRef.current).toBe('idle')
+    expect(state.scheduleUpdate).toHaveBeenCalledWith({ status: 'idle' })
+
+    vi.useRealTimers()
+  })
+
+  it('clears previous idle timeout when scheduleIdle and status is not working', async () => {
+    vi.useFakeTimers()
+    const { evaluateActivity } = await import('../utils/terminalActivityDetector')
+    vi.mocked(evaluateActivity).mockReturnValue({ status: null, scheduleIdle: true })
+
+    const handler = createHandler({ isAgent: true })
+    // Set up an existing idle timeout
+    state.idleTimeoutRef.current = setTimeout(() => {}, 5000)
+    handler.handleData('output')
+
+    // The old timeout should have been replaced
+    vi.advanceTimersByTime(1000)
+    expect(state.scheduleUpdate).toHaveBeenCalledWith({ status: 'idle' })
+
+    vi.useRealTimers()
+  })
+
+  it('calls onViewportSyncCheck after debounce when active', () => {
+    vi.useFakeTimers()
+    const syncCheck = vi.fn()
+    const handler = createPtyDataHandler({
+      terminal,
+      isAgent: false,
+      command: undefined,
+      state,
+      effectStartTime: Date.now(),
+      isActiveRef,
+      onViewportSyncCheck: syncCheck,
+    })
+
+    handler.handleData('data1')
+    handler.handleData('data2')
+
+    // Should not have been called yet (debounced)
+    expect(syncCheck).not.toHaveBeenCalled()
+
+    vi.advanceTimersByTime(500)
+    expect(syncCheck).toHaveBeenCalledTimes(1)
+
+    // After timer fires, next data should schedule another check
+    handler.handleData('data3')
+    vi.advanceTimersByTime(500)
+    expect(syncCheck).toHaveBeenCalledTimes(2)
+
+    vi.useRealTimers()
+  })
+
   describe('clearTimers', () => {
-    it('is a no-op (kept for interface compatibility)', () => {
-      const handler = createHandler()
+    it('clears the viewport sync check timer', () => {
+      vi.useFakeTimers()
+      const syncCheck = vi.fn()
+      const handler = createPtyDataHandler({
+        terminal,
+        isAgent: false,
+        command: undefined,
+        state,
+        effectStartTime: Date.now(),
+        isActiveRef,
+        onViewportSyncCheck: syncCheck,
+      })
+
+      handler.handleData('data')
       handler.clearTimers()
-      // Should not throw
+      vi.advanceTimersByTime(500)
+      // syncCheck should NOT have been called because we cleared timers
+      expect(syncCheck).not.toHaveBeenCalled()
+
+      vi.useRealTimers()
     })
   })
 })
