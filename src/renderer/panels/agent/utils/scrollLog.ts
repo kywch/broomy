@@ -122,18 +122,26 @@ export function setupScrollLock(deps: ScrollLockDeps): ScrollLockHandle {
     if (isRestoring) return
     const newScrollTop = viewportEl.scrollTop
 
-    if (isFollowingRef.current) {
+    // Check isAtBottom directly from the DOM — don't trust isFollowingRef alone
+    // because xterm.js stops wheel event propagation, which can prevent
+    // isFollowingRef from being updated by our gesture tracking.
+    const scrollMax = viewportEl.scrollHeight - viewportEl.clientHeight
+    const isAtBottom = scrollMax <= 0 || newScrollTop >= scrollMax - 1
+
+    if (isAtBottom) {
+      // At the bottom — always allow (new output pushing the viewport down).
       savedScrollTop = newScrollTop
       return
     }
 
     const timeSinceGesture = Date.now() - lastUserGestureTime()
     if (timeSinceGesture < 300) {
+      // User just scrolled — allow and save.
       savedScrollTop = newScrollTop
       return
     }
 
-    // No user gesture, not following — revert.
+    // Not at bottom, no recent user gesture — unauthorized scroll. Revert.
     if (newScrollTop !== savedScrollTop) {
       scrollLog.add({
         source: 'scroll-restored',
