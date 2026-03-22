@@ -1,7 +1,7 @@
 /**
  * Manages file navigation state including diff mode, scroll-to-line, search highlights, and dirty-file save coordination across sessions.
  */
-import { useState, useCallback, useRef } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import { resolveNavigation, applyPendingNavigation, type NavigationTarget } from '../../../shared/utils/fileNavigation'
 
 export function useFileNavigation({
@@ -20,6 +20,19 @@ export function useFileNavigation({
   const [diffCurrentRef, setDiffCurrentRef] = useState<string | undefined>(undefined)
   const [diffLabel, setDiffLabel] = useState<string | undefined>(undefined)
   const [pendingNavigation, setPendingNavigation] = useState<NavigationTarget | null>(null)
+
+  // Reset diff-related state when switching sessions so diff mode from one
+  // session doesn't leak into another.
+  const prevSessionRef = useRef(activeSessionId)
+  useEffect(() => {
+    if (prevSessionRef.current !== activeSessionId) {
+      prevSessionRef.current = activeSessionId
+      setOpenFileInDiffMode(false)
+      setDiffBaseRef(undefined)
+      setDiffCurrentRef(undefined)
+      setDiffLabel(undefined)
+    }
+  }, [activeSessionId])
 
   // Per-session dirty state and save function maps
   const dirtyMapRef = useRef<Record<string, boolean>>({})
