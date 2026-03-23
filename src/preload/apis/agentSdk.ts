@@ -6,7 +6,7 @@ import type { AgentSdkMessage, AgentSdkPermissionRequest } from '../../shared/ag
 
 export type AgentSdkApi = {
   start: (options: { id: string; prompt: string; cwd: string; sdkSessionId?: string; skipApproval: boolean; env?: Record<string, string> }) => Promise<{ id: string }>
-  send: (id: string, prompt: string, sdkSessionId?: string) => Promise<void>
+  send: (id: string, prompt: string, options?: { sdkSessionId?: string; cwd?: string; skipApproval?: boolean; env?: Record<string, string> }) => Promise<void>
   stop: (id: string) => Promise<void>
   respondToPermission: (id: string, toolUseId: string, allowed: boolean, updatedInput?: Record<string, unknown>) => Promise<void>
   onMessage: (id: string, cb: (msg: AgentSdkMessage) => void) => () => void
@@ -22,7 +22,7 @@ export type AgentSdkApi = {
 
 export const agentSdkApi: AgentSdkApi = {
   start: (options) => ipcRenderer.invoke('agentSdk:start', options),
-  send: (id, prompt, sdkSessionId) => ipcRenderer.invoke('agentSdk:send', id, prompt, sdkSessionId),
+  send: (id, prompt, options) => ipcRenderer.invoke('agentSdk:send', id, prompt, options),
   stop: (id) => ipcRenderer.invoke('agentSdk:stop', id),
   respondToPermission: (id, toolUseId, allowed, updatedInput) => ipcRenderer.invoke('agentSdk:respond', id, toolUseId, allowed, updatedInput),
   onMessage: (id, cb) => {

@@ -367,7 +367,9 @@ export function register(ipcMain: IpcMain, ctx: HandlerContext): void {
 
   // Send a follow-up message to an existing session via the message queue.
   // If no session exists, starts a new one.
-  ipcMain.handle('agentSdk:send', (_event, id: string, prompt: string, sdkSessionId?: string) => {
+  ipcMain.handle('agentSdk:send', (_event, id: string, prompt: string, options?: {
+    sdkSessionId?: string; cwd?: string; skipApproval?: boolean; env?: Record<string, string>
+  }) => {
     const existing = activeSessions.get(id)
     if (existing) {
       // Push into the queue — the SDK process picks it up
@@ -375,13 +377,15 @@ export function register(ipcMain: IpcMain, ctx: HandlerContext): void {
       return
     }
 
-    // No active session — start a new one
+    // No active session — start a new one with the correct cwd
     const senderWindow = BrowserWindow.fromWebContents(_event.sender)
     if (!senderWindow) return
 
-    void startSession(id, prompt, process.cwd(), senderWindow, {
-      sdkSessionId,
-      skipApproval: false,
+    const cwd = options?.cwd ?? process.cwd()
+    void startSession(id, prompt, cwd, senderWindow, {
+      sdkSessionId: options?.sdkSessionId,
+      skipApproval: options?.skipApproval ?? false,
+      env: options?.env,
     })
   })
 

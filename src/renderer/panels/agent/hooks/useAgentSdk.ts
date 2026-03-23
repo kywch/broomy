@@ -153,8 +153,11 @@ export function useAgentSdk(options: UseAgentSdkOptions): UseAgentSdkReturn {
     })
 
     if (hasActiveSessionRef.current) {
-      // Session is alive — push message into the queue (no new process)
-      void window.agentSdk.send(sessionId, prompt)
+      // Session is alive — push message into the queue (no new process).
+      // Pass cwd/env/skipApproval so if the main process lost the session
+      // (e.g. after hot reload), it can start a new one with correct params.
+      void window.agentSdk.send(sessionId, prompt, { cwd, skipApproval, env,
+        sdkSessionId: useSessionStore.getState().sessions.find(s => s.id === sessionId)?.sdkSessionId })
     } else {
       // First message — start a new persistent session
       const storedId = useSessionStore.getState().sessions.find(s => s.id === sessionId)?.sdkSessionId

@@ -98,7 +98,7 @@ async function executeAgentAction(
       })
       useAgentChatStore.getState().setState(apiSessionId, 'running')
       useSessionStore.getState().updateAgentMonitor(apiSessionId, { status: 'working' })
-      void window.agentSdk.send(apiSessionId, prompt)
+      void window.agentSdk.send(apiSessionId, prompt, { cwd: ctx.directory })
     } else if (ctx.agentPtyId) {
       await sendAgentPrompt(ctx.agentPtyId, prompt)
     }
