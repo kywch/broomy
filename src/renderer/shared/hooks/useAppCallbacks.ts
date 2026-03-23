@@ -120,6 +120,18 @@ export function useAppCallbacks({
     return { isolated: true, repoRootDir: repo.rootDir }
   }, [repos])
 
+  const getAgentConnectionMode = useCallback((session: Session): 'terminal' | 'api' | undefined => {
+    if (!session.agentId) return undefined
+    const agent = agents.find((a) => a.id === session.agentId)
+    return agent?.connectionMode
+  }, [agents])
+
+  const getAgentSkipApproval = useCallback((session: Session): boolean => {
+    if (!session.repoId) return false
+    const repo = repos.find((r) => r.id === session.repoId)
+    return repo?.skipApproval ?? false
+  }, [repos])
+
   const { handleStartBranchSession, handleStartExistingBranchSession, abortInit } = useBackgroundInit({
     addInitializingSession,
     finalizeSession,
@@ -202,6 +214,8 @@ export function useAppCallbacks({
     getAgentCommand,
     getAgentEnv,
     getRepoIsolation,
+    getAgentConnectionMode,
+    getAgentSkipApproval,
     handleLayoutSizeChange,
     handleFileViewerPositionChange,
     handleSelectSession,
