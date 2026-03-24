@@ -202,6 +202,7 @@ async function startSession(
     env?: Record<string, string>
   },
 ): Promise<void> {
+  console.log('[agentSdk] startSession', sessionId, 'cwd:', cwd, 'skipApproval:', options.skipApproval)
   const { query } = await import('@anthropic-ai/claude-agent-sdk')
 
   const abortController = new AbortController()
@@ -373,6 +374,7 @@ export function register(ipcMain: IpcMain, ctx: HandlerContext): void {
     const existing = activeSessions.get(id)
     if (existing) {
       // Push into the queue — the SDK process picks it up
+      console.log('[agentSdk] send: pushing to queue for', id)
       existing.messageQueue.push(prompt)
       return
     }
@@ -382,6 +384,7 @@ export function register(ipcMain: IpcMain, ctx: HandlerContext): void {
     if (!senderWindow) return
 
     const cwd = options?.cwd ?? process.cwd()
+    console.log('[agentSdk] send: no active session, starting new. cwd:', cwd, 'skipApproval:', options?.skipApproval)
     void startSession(id, prompt, cwd, senderWindow, {
       sdkSessionId: options?.sdkSessionId,
       skipApproval: options?.skipApproval ?? false,

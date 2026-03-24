@@ -48,23 +48,21 @@ export function useAgentSdk(options: UseAgentSdkOptions): UseAgentSdkReturn {
     void window.agentSdk.commands(env).then(setAvailableCommands)
   }, [env])
 
-  // Load message history from a previous SDK session on mount.
-  // Always load if the store is empty for this session (e.g. after app reload
-  // or first visit). The historyLoaded ref prevents double-loading.
-  const historyLoadedRef = useRef(false)
+  // Load message history from the SDK transcript on mount.
+  // Always reload — the in-memory store only has messages from the current
+  // app session, not the full transcript. Clear and reload to show the
+  // most recent messages from the persistent SDK session.
+  const historyLoadedRef = useRef<string | null>(null)
   useEffect(() => {
-    historyLoadedRef.current = false
-  }, [sessionId])
-  useEffect(() => {
-    if (historyLoadedRef.current) return
     const stored = useSessionStore.getState().sessions.find(s => s.id === sessionId)
     const currentSdkId = stored?.sdkSessionId ?? sdkSessionId
-    const chatSession = useAgentChatStore.getState().sessions[sessionId] as { messages: unknown[] } | undefined
-    const hasMessages = (chatSession?.messages.length ?? 0) > 0
-    if (currentSdkId && currentSdkId.length > 0 && !hasMessages) {
-      historyLoadedRef.current = true
-      void window.agentSdk.loadHistory(currentSdkId, sessionId, env)
-    }
+    if (!currentSdkId || currentSdkId.length === 0) return
+    // Skip if already loaded for this exact session+sdkId combo
+    const key = `${sessionId}:${currentSdkId}`
+    if (historyLoadedRef.current === key) return
+    historyLoadedRef.current = key
+    useAgentChatStore.getState().clearSession(sessionId)
+    void window.agentSdk.loadHistory(currentSdkId, sessionId, env)
   }, [sessionId, sdkSessionId, env])
 
   // Subscribe to IPC events
