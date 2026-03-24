@@ -10,6 +10,7 @@ import { sendAgentPrompt } from '../../shared/utils/focusHelpers'
 import { useAgentStore, type AgentConfig } from '../../store/agents'
 import { useAgentChatStore } from '../../store/agentChat'
 import { useSessionStore } from '../../store/sessions'
+import { useRepoStore } from '../../store/repos'
 
 export interface ActionExecutionContext {
   directory: string
@@ -98,7 +99,18 @@ async function executeAgentAction(
       })
       useAgentChatStore.getState().setState(apiSessionId, 'running')
       useSessionStore.getState().updateAgentMonitor(apiSessionId, { status: 'working' })
-      void window.agentSdk.send(apiSessionId, prompt, { cwd: ctx.directory })
+      const session = useSessionStore.getState().sessions.find(s => s.id === apiSessionId)
+      const repoList = useRepoStore.getState().repos
+      const repo = session?.repoId
+        ? repoList.find(r => r.id === session.repoId)
+        : repoList.find(r => ctx.directory.startsWith(`${r.rootDir}/`) || ctx.directory === r.rootDir)
+      const agent = ctx.agentId ? useAgentStore.getState().agents.find((a: AgentConfig) => a.id === ctx.agentId) : undefined
+      void window.agentSdk.send(apiSessionId, prompt, {
+        cwd: ctx.directory,
+        skipApproval: repo?.skipApproval ?? false,
+        env: agent?.env,
+        sdkSessionId: session?.sdkSessionId,
+      })
     } else if (ctx.agentPtyId) {
       await sendAgentPrompt(ctx.agentPtyId, prompt)
     }
