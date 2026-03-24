@@ -290,7 +290,18 @@ async function startSession(
     }
   } catch (err: unknown) {
     const errorMessage = err instanceof Error ? err.message : String(err)
-    if (!errorMessage.includes('aborted')) {
+    if (errorMessage.includes('aborted')) {
+      // User cancelled — not an error
+    } else if (errorMessage.includes('No conversation found') && options.sdkSessionId) {
+      // Stale session ID — retry without resume
+      console.log('[agentSdk] Stale session ID, retrying without resume')
+      activeSessions.delete(sessionId)
+      void startSession(sessionId, firstPrompt, cwd, win, {
+        ...options,
+        sdkSessionId: undefined,
+      })
+      return
+    } else {
       win.webContents.send(`agentSdk:error:${sessionId}`, errorMessage)
     }
   } finally {
