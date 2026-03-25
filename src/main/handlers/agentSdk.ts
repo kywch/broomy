@@ -9,7 +9,7 @@ import { BrowserWindow, IpcMain } from 'electron'
 import { HandlerContext } from './types'
 import type { AgentSdkMessage, AgentSdkPermissionRequest } from '../../shared/agentSdkTypes'
 import {
-  expandHome, nextMessageId, sendMsg,
+  expandHome, nextMessageId, sendMsg, resolveAgentSdkCliPath,
   handleLoadHistory, handleStatus, handleFetchCommands, handleLogin,
 } from './agentSdkHelpers'
 
@@ -202,7 +202,8 @@ async function startSession(
     env?: Record<string, string>
   },
 ): Promise<void> {
-  console.log('[agentSdk] startSession', sessionId, 'cwd:', cwd, 'skipApproval:', options.skipApproval)
+  const cliPath = resolveAgentSdkCliPath()
+  console.log('[agentSdk] startSession', sessionId, 'cwd:', cwd, 'skipApproval:', options.skipApproval, 'cliPath:', cliPath)
   const { query } = await import('@anthropic-ai/claude-agent-sdk')
 
   const abortController = new AbortController()
@@ -227,6 +228,7 @@ async function startSession(
   const env = { ...process.env, ...agentEnv }
 
   const queryOptions: Record<string, unknown> = {
+    pathToClaudeCodeExecutable: cliPath,
     abortController,
     cwd,
     env,
@@ -302,6 +304,8 @@ async function startSession(
       })
       return
     } else {
+      console.error('[agentSdk] Session error:', errorMessage)
+      if (err instanceof Error && err.stack) console.error(err.stack)
       win.webContents.send(`agentSdk:error:${sessionId}`, errorMessage)
     }
   } finally {

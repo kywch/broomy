@@ -2,12 +2,46 @@
  * Helper functions for the Agent SDK IPC handlers.
  * Extracted to keep agentSdk.ts under the line limit.
  */
-import { BrowserWindow } from 'electron'
-import { join } from 'path'
+import { app, BrowserWindow } from 'electron'
+import { join, dirname } from 'path'
+import { existsSync } from 'fs'
 import { homedir } from 'os'
 import { spawn } from 'child_process'
 import { resolveCommand } from '../platform'
 import type { AgentSdkMessage } from '../../shared/agentSdkTypes'
+
+/**
+ * Resolve the path to the Agent SDK's cli.js for use as pathToClaudeCodeExecutable.
+ *
+ * In dev mode, require.resolve finds it directly in node_modules.
+ * In packaged builds, node_modules is inside app.asar but asarUnpack extracts
+ * the SDK to app.asar.unpacked/. The SDK's own resolution uses import.meta.url
+ * which still points inside the asar, so child_process.spawn fails. We detect
+ * the asar path and rewrite it to the unpacked location.
+ */
+export function resolveAgentSdkCliPath(): string {
+  let sdkEntry: string
+  try {
+    sdkEntry = require.resolve('@anthropic-ai/claude-agent-sdk')
+  } catch {
+    throw new Error('Cannot resolve @anthropic-ai/claude-agent-sdk — is it installed?')
+  }
+
+  const cliPath = join(dirname(sdkEntry), 'cli.js')
+
+  // In packaged builds, rewrite app.asar to app.asar.unpacked
+  const sep = process.platform === 'win32' ? '\\' : '/'
+  if (app.isPackaged && cliPath.includes(`app.asar${sep}`)) {
+    const unpackedPath = cliPath.replace(`app.asar${sep}`, `app.asar.unpacked${sep}`)
+    if (existsSync(unpackedPath)) {
+      console.log('[agentSdk] Using unpacked CLI path:', unpackedPath)
+      return unpackedPath
+    }
+    console.warn('[agentSdk] Expected unpacked path not found:', unpackedPath, '— falling back to:', cliPath)
+  }
+
+  return cliPath
+}
 
 export function expandHome(value: string): string {
   if (value.startsWith('~/')) return join(homedir(), value.slice(2))
@@ -106,7 +140,7 @@ export async function handleStatus(
       const { query: sdkQuery } = await import('@anthropic-ai/claude-agent-sdk')
       const q = sdkQuery({
         prompt: '/cost',
-        options: { env: process.env, settingSources: ['user'], maxTurns: 0 },
+        options: { pathToClaudeCodeExecutable: resolveAgentSdkCliPath(), env: process.env, settingSources: ['user'], maxTurns: 0 },
       })
       const account = await q.accountInfo()
       if (account.email) rows.push(['Account', account.email])
@@ -133,6 +167,7 @@ export async function handleFetchCommands(agentEnv?: Record<string, string>): Pr
       const q = sdkQuery({
         prompt: '/cost',
         options: {
+          pathToClaudeCodeExecutable: resolveAgentSdkCliPath(),
           env: process.env,
           tools: { type: 'preset', preset: 'claude_code' },
           settingSources: ['user', 'project'],
