@@ -1,8 +1,9 @@
 /**
  * Hook that connects the AgentChat UI to the Agent SDK IPC bridge.
  *
- * Each user message starts a new SDK query(). Multi-turn context is maintained
- * via the SDK's session resume (passing the previous session ID).
+ * The main process manages a persistent V2 SDK session.  First message
+ * triggers agentSdk:start; follow-ups use agentSdk:send which calls
+ * session.send() on the same session — no restarts, no replayed history.
  */
 import { useEffect, useCallback, useRef, useState } from 'react'
 import { useAgentChatStore } from '../../../store/agentChat'
@@ -39,7 +40,7 @@ interface UseAgentSdkReturn {
 export function useAgentSdk(options: UseAgentSdkOptions): UseAgentSdkReturn {
   const { sessionId, cwd, sdkSessionId, skipApproval, env } = options
   const isRunningRef = useRef(false)
-  const hasActiveSessionRef = useRef(false)
+  const hasStartedRef = useRef(false)
   const [availableCommands, setAvailableCommands] = useState<CommandInfo[]>([])
   const [historyMeta, setHistoryMeta] = useState<HistoryMeta | null>(null)
 
@@ -49,15 +50,11 @@ export function useAgentSdk(options: UseAgentSdkOptions): UseAgentSdkReturn {
   }, [env])
 
   // Load message history from the SDK transcript on mount.
-  // Always reload — the in-memory store only has messages from the current
-  // app session, not the full transcript. Clear and reload to show the
-  // most recent messages from the persistent SDK session.
   const historyLoadedRef = useRef<string | null>(null)
   useEffect(() => {
     const stored = useSessionStore.getState().sessions.find(s => s.id === sessionId)
     const currentSdkId = stored?.sdkSessionId ?? sdkSessionId
     if (!currentSdkId || currentSdkId.length === 0) return
-    // Skip if already loaded for this exact session+sdkId combo
     const key = `${sessionId}:${currentSdkId}`
     if (historyLoadedRef.current === key) return
     historyLoadedRef.current = key
@@ -72,7 +69,6 @@ export function useAgentSdk(options: UseAgentSdkOptions): UseAgentSdkReturn {
     const unsubMessage = window.agentSdk.onMessage(sessionId, (msg: AgentSdkMessage) => {
       useAgentChatStore.getState().addMessage(sessionId, msg)
 
-      // Don't update activity status for history messages (loaded on mount)
       const isHistory = msg.id.startsWith('history-')
       if (!isHistory && (msg.type === 'text' || msg.type === 'tool_use')) {
         useSessionStore.getState().updateAgentMonitor(sessionId, {
@@ -95,8 +91,7 @@ export function useAgentSdk(options: UseAgentSdkOptions): UseAgentSdkReturn {
 
     const unsubError = window.agentSdk.onError(sessionId, (error: string) => {
       isRunningRef.current = false
-      hasActiveSessionRef.current = false
-      // Clear stale SDK session ID so next attempt starts fresh
+      hasStartedRef.current = false
       useSessionStore.getState().setSdkSessionId(sessionId, '')
       useAgentChatStore.getState().setError(sessionId, error)
       useAgentChatStore.getState().addMessage(sessionId, {
@@ -159,17 +154,17 @@ export function useAgentSdk(options: UseAgentSdkOptions): UseAgentSdkReturn {
       text: prompt,
     })
 
-    if (hasActiveSessionRef.current) {
-      // Session is alive — push message into the queue (no new process).
+    if (hasStartedRef.current) {
+      // V2 session is alive in main process — send directly.
       // Pass cwd/env/skipApproval so if the main process lost the session
       // (e.g. after hot reload), it can start a new one with correct params.
       void window.agentSdk.send(sessionId, prompt, { cwd, skipApproval, env,
         sdkSessionId: useSessionStore.getState().sessions.find(s => s.id === sessionId)?.sdkSessionId })
     } else {
-      // First message — start a new persistent session
+      // First message — create the V2 session
       const storedId = useSessionStore.getState().sessions.find(s => s.id === sessionId)?.sdkSessionId
       const resumeId = storedId && storedId.length > 0 ? storedId : (sdkSessionId && sdkSessionId.length > 0 ? sdkSessionId : undefined)
-      hasActiveSessionRef.current = true
+      hasStartedRef.current = true
       void window.agentSdk.start({
         id: sessionId,
         prompt,
@@ -184,7 +179,7 @@ export function useAgentSdk(options: UseAgentSdkOptions): UseAgentSdkReturn {
   const stopAgent = useCallback(() => {
     void window.agentSdk.stop(sessionId)
     isRunningRef.current = false
-    hasActiveSessionRef.current = false
+    hasStartedRef.current = false
     useAgentChatStore.getState().setState(sessionId, 'idle')
     useSessionStore.getState().updateAgentMonitor(sessionId, { status: 'idle' })
   }, [sessionId])
