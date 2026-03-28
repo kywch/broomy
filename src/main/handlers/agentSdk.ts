@@ -206,6 +206,7 @@ async function startSession(
   console.log('[agentSdk] startSession (V2)', sessionId, 'cwd:', cwd, 'skipApproval:', options.skipApproval)
   const {
     unstable_v2_createSession,
+    unstable_v2_resumeSession,
   } = await import('@anthropic-ai/claude-agent-sdk')
 
   // Build env: process.env as base, agent-specific env vars merged on top
@@ -253,17 +254,38 @@ async function startSession(
     }
   }
 
-  // Always create a fresh session. V2 resume + send/stream doesn't reliably
-  // produce responses for the new turn (the stream returns immediately).
-  // Multi-turn context within an app run is handled by the persistent V2
-  // session object — no resume needed. History loading uses getSessionMessages
-  // separately and doesn't require session resume.
-  if (options.sdkSessionId) {
-    console.log('[agentSdk] Ignoring stored sdkSessionId (V2 sessions are per-app-run):', options.sdkSessionId)
+  // WORKAROUND: The V2 SDKSessionOptions type doesn't include `cwd`, and the
+  // SDK's SDKSession class doesn't forward it to the ProcessTransport. The
+  // subprocess inherits process.cwd() from the parent. Since createSession()
+  // and resumeSession() are synchronous (spawn the subprocess immediately in
+  // the constructor), we temporarily chdir so the subprocess picks up the
+  // correct directory.
+  const originalCwd = process.cwd()
+  try {
+    process.chdir(cwd)
+  } catch (err) {
+    console.warn('[agentSdk] Failed to chdir to', cwd, err)
   }
-  const sdkSession = unstable_v2_createSession(
-    sessionOptions as Parameters<typeof unstable_v2_createSession>[0],
-  )
+
+  let sdkSession
+  if (options.sdkSessionId && options.sdkSessionId.length > 0) {
+    // Resume existing session — restores conversation context across app restarts
+    console.log('[agentSdk] Resuming session:', options.sdkSessionId)
+    sdkSession = unstable_v2_resumeSession(
+      options.sdkSessionId,
+      sessionOptions as Parameters<typeof unstable_v2_resumeSession>[1],
+    )
+  } else {
+    sdkSession = unstable_v2_createSession(
+      sessionOptions as Parameters<typeof unstable_v2_createSession>[0],
+    )
+  }
+
+  try {
+    process.chdir(originalCwd)
+  } catch {
+    // Best-effort restore
+  }
 
   const session: ActiveSession = {
     sdkSession: sdkSession as ActiveSession['sdkSession'],
