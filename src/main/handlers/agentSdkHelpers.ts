@@ -155,7 +155,7 @@ export async function handleStatus(
   const table = `| | |\n|---|---|\n${tableRows}`
 
   sendMsg(senderWindow, sessionId, {
-    id: nextMessageId(), type: 'result', timestamp: Date.now(), result: table,
+    id: nextMessageId(), type: 'text', timestamp: Date.now(), text: table,
   })
   senderWindow.webContents.send(`agentSdk:done:${sessionId}`, sdkSessionId ?? '')
 }

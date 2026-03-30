@@ -112,18 +112,17 @@ describe('AgentChatMessage', () => {
     expect(screen.getByText('Session initialized (model: claude-sonnet-4)')).toBeTruthy()
   })
 
-  it('renders result messages with markdown', () => {
+  it('renders result messages with stats only (result text is shown via assistant message)', () => {
     const msg: AgentSdkMessage = {
       id: 'result-1', type: 'result', timestamp: Date.now(),
-      result: '| Key | Value |\n|---|---|\n| **Plan** | Claude Max |',
+      result: 'This text should not be rendered — it duplicates the assistant message',
       durationMs: 3500, numTurns: 2,
     }
     render(<AgentChatMessage msg={msg} />)
     expect(screen.getByText('3.5s')).toBeTruthy()
     expect(screen.getByText('2 turns')).toBeTruthy()
-    // Table should be rendered
-    expect(screen.getByText('Plan')).toBeTruthy()
-    expect(screen.getByText('Claude Max')).toBeTruthy()
+    // Result text should NOT be rendered (it duplicates the preceding assistant message)
+    expect(screen.queryByText(/This text should not be rendered/)).toBeNull()
   })
 
   it('renders result with no text as metadata only', () => {
@@ -163,17 +162,14 @@ describe('AgentChatMessage', () => {
     expect(screen.getByText('/tmp/plan.md')).toBeTruthy()
   })
 
-  it('renders markdown tables in result messages', () => {
+  it('renders nothing for result message with only text and no stats', () => {
     const msg: AgentSdkMessage = {
       id: 'table-1', type: 'result', timestamp: Date.now(),
-      result: '| Name | Value |\n|---|---|\n| foo | bar |\n| baz | qux |',
+      result: '| Name | Value |\n|---|---|\n| foo | bar |',
     }
-    render(<AgentChatMessage msg={msg} />)
-    expect(screen.getByText('foo')).toBeTruthy()
-    expect(screen.getByText('bar')).toBeTruthy()
-    // Should be in a table
-    const tables = document.querySelectorAll('table')
-    expect(tables.length).toBeGreaterThan(0)
+    const { container } = render(<AgentChatMessage msg={msg} />)
+    // No stats means nothing to render — result text is shown via assistant message
+    expect(container.innerHTML).toBe('')
   })
 })
 

@@ -377,17 +377,13 @@ function AgentChatMessageInner({ msg, isUserMessage, toolResult, isLast, onAppro
   }
 
   if (msg.type === 'result') {
-    const hasResultText = msg.result && msg.result.length > 0
+    // Don't render msg.result text — it duplicates the preceding assistant message.
+    // Only show the stats (duration, turns).
+    const hasStats = msg.durationMs !== undefined || msg.numTurns !== undefined
+    if (!hasStats) return null
     return (
       <div className="my-1">
-        {hasResultText && (
-          <div className="text-sm text-neutral-200">
-            <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
-              {msg.result ?? ''}
-            </ReactMarkdown>
-          </div>
-        )}
-        <div className={`flex gap-3 text-xs text-neutral-500 ${hasResultText ? 'mt-1' : ''}`}>
+        <div className="flex gap-3 text-xs text-neutral-500">
           {msg.durationMs !== undefined && (
             <span>{(msg.durationMs / 1000).toFixed(1)}s</span>
           )}

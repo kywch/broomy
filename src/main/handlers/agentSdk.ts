@@ -1,9 +1,13 @@
 /**
  * IPC handlers for the Claude Agent SDK integration.
  *
- * Each user message starts a new query() call. Multi-turn context is maintained
- * via the SDK's session resume feature (passing the session ID from the previous
- * query). The SDK process exits after each query completes.
+ * Uses the V2 Session API for multi-turn conversations.
+ * A single persistent session handles all turns — no restarts, no replayed
+ * history, token-efficient by design.
+ *
+ * Pattern:
+ *   createSession() or resumeSession() → session.send() → session.stream()
+ *   Follow-up turns reuse the same session object via send()/stream().
  */
 import { BrowserWindow, IpcMain } from 'electron'
 import { HandlerContext } from './types'
@@ -17,59 +21,18 @@ interface PendingPermission {
   resolve: (result: { behavior: 'allow' } | { behavior: 'deny'; message: string }) => void
 }
 
-type UserMessage = {
-  type: 'user'
-  message: { role: 'user'; content: string }
-}
-
-/**
- * Async message queue (same pattern as the official simple-chatapp demo).
- * Messages are pushed in via push(), consumed by the SDK via async iteration.
- * The SDK process stays alive as long as the queue is open.
- */
-class MessageQueue {
-  private messages: UserMessage[] = []
-  private waiting: ((msg: UserMessage) => void) | null = null
-  private closed = false
-
-  push(content: string): void {
-    const msg: UserMessage = { type: 'user', message: { role: 'user', content } }
-    if (this.waiting) {
-      this.waiting(msg)
-      this.waiting = null
-    } else {
-      this.messages.push(msg)
-    }
-  }
-
-  close(): void {
-    this.closed = true
-    if (this.waiting) {
-      // Resolve with a dummy that will cause iteration to end
-      this.waiting = null
-    }
-  }
-
-  async *[Symbol.asyncIterator](): AsyncIterableIterator<UserMessage> {
-    while (!this.closed) {
-      if (this.messages.length > 0) {
-        yield this.messages.shift()!
-      } else {
-        yield await new Promise<UserMessage>((resolve) => {
-          this.waiting = resolve
-        })
-      }
-    }
-  }
-}
-
 interface ActiveSession {
+  sdkSession: {
+    send(message: string): Promise<void>
+    stream(): AsyncGenerator<unknown, void>
+    close(): void
+    readonly sessionId: string
+  }
   sdkSessionId?: string
-  abortController: AbortController
   ownerWindow: BrowserWindow
   pendingPermission: PendingPermission | null
-  queryObj?: { close(): void }
-  messageQueue: MessageQueue
+  /** True after the first system init message has been forwarded to the renderer */
+  initSent: boolean
 }
 
 // Module-local state
@@ -81,6 +44,12 @@ function processSystemMessage(sessionId: string, sdkMessage: Record<string, unkn
   if (session && typeof sdkMessage.session_id === 'string') {
     session.sdkSessionId = sdkMessage.session_id
   }
+  // The SDK emits a system init on every stream() call (each turn).
+  // Only forward the first one to the renderer to avoid "Session initialized"
+  // appearing before every response.
+  if (session?.initSent) return
+  if (session) session.initSent = true
+
   const model = typeof sdkMessage.model === 'string' ? sdkMessage.model : 'unknown'
   sendMsg(win, sessionId, {
     id: nextMessageId(),
@@ -185,11 +154,42 @@ function processAndSendMessage(
 }
 
 /**
- * Start a persistent SDK session using an async message queue as the prompt.
- * The SDK process stays alive and consumes messages from the queue.
- * Follow-up messages are pushed into the queue via agentSdk:send.
- *
- * This is the same pattern used by the official simple-chatapp demo.
+ * Run a single turn: stream all messages until the turn completes.
+ * In V2, each send()/stream() pair is one turn. The stream iterator
+ * finishes when the turn is done.
+ */
+async function streamTurn(
+  sessionId: string,
+  session: ActiveSession,
+  win: BrowserWindow,
+): Promise<void> {
+  try {
+    for await (const message of session.sdkSession.stream()) {
+      if (!activeSessions.has(sessionId)) break
+      const msg = message as Record<string, unknown>
+      processAndSendMessage(sessionId, msg, win)
+
+      if (msg.type === 'result') {
+        const sdkSessionId = session.sdkSessionId ?? ''
+        win.webContents.send(`agentSdk:done:${sessionId}`, sdkSessionId)
+      }
+    }
+  } catch (err: unknown) {
+    const errorMessage = err instanceof Error ? err.message : String(err)
+    if (errorMessage.includes('aborted')) {
+      // User cancelled — not an error
+    } else {
+      console.error('[agentSdk] Stream error:', errorMessage)
+      if (err instanceof Error && err.stack) console.error(err.stack)
+      win.webContents.send(`agentSdk:error:${sessionId}`, errorMessage)
+      // On error, clean up so next message starts a fresh session
+      activeSessions.delete(sessionId)
+    }
+  }
+}
+
+/**
+ * Create a V2 SDK session and start the stream loop.
  */
 async function startSession(
   sessionId: string,
@@ -203,20 +203,11 @@ async function startSession(
   },
 ): Promise<void> {
   const cliPath = resolveAgentSdkCliPath()
-  console.log('[agentSdk] startSession', sessionId, 'cwd:', cwd, 'skipApproval:', options.skipApproval, 'cliPath:', cliPath)
-  const { query } = await import('@anthropic-ai/claude-agent-sdk')
-
-  const abortController = new AbortController()
-  const messageQueue = new MessageQueue()
-
-  const session: ActiveSession = {
-    sdkSessionId: options.sdkSessionId,
-    abortController,
-    ownerWindow: win,
-    pendingPermission: null,
-    messageQueue,
-  }
-  activeSessions.set(sessionId, session)
+  console.log('[agentSdk] startSession (V2)', sessionId, 'cwd:', cwd, 'skipApproval:', options.skipApproval)
+  const {
+    unstable_v2_createSession,
+    unstable_v2_resumeSession,
+  } = await import('@anthropic-ai/claude-agent-sdk')
 
   // Build env: process.env as base, agent-specific env vars merged on top
   const agentEnv: Record<string, string> = {}
@@ -227,34 +218,29 @@ async function startSession(
   }
   const env = { ...process.env, ...agentEnv }
 
-  const queryOptions: Record<string, unknown> = {
+  // Build session options — cwd is passed as an extra property.
+  // The V2 types don't declare it yet (unstable), but the underlying
+  // engine respects it (same as V1 Options.cwd).
+  const sessionOptions: Record<string, unknown> = {
+    model: 'claude-sonnet-4-6',
     pathToClaudeCodeExecutable: cliPath,
-    abortController,
     cwd,
     env,
-    tools: { type: 'preset', preset: 'claude_code' },
-    systemPrompt: { type: 'preset', preset: 'claude_code' },
-    settingSources: ['user', 'project'],
-  }
-
-  if (options.sdkSessionId && options.sdkSessionId.length > 0) {
-    queryOptions.resume = options.sdkSessionId
   }
 
   if (options.skipApproval) {
-    queryOptions.permissionMode = 'bypassPermissions'
-    queryOptions.allowDangerouslySkipPermissions = true
+    sessionOptions.permissionMode = 'bypassPermissions'
   } else {
-    queryOptions.canUseTool = async (
+    sessionOptions.canUseTool = async (
       toolName: string,
       input: Record<string, unknown>,
-      canUseToolOptions: { toolUseID: string; decisionReason?: string },
+      canUseToolOptions: { signal: AbortSignal; decisionReason?: string },
     ) => {
       const permReq: AgentSdkPermissionRequest = {
         id: `perm-${String(Date.now())}`,
         toolName,
         toolInput: input,
-        toolUseId: canUseToolOptions.toolUseID,
+        toolUseId: `tooluse-${String(Date.now())}`,
         decisionReason: canUseToolOptions.decisionReason,
       }
       win.webContents.send(`agentSdk:permission:${sessionId}`, permReq)
@@ -268,47 +254,60 @@ async function startSession(
     }
   }
 
-  // Push the first message into the queue, then pass the queue as the prompt.
-  // The SDK iterates the queue — it stays alive waiting for more messages.
-  messageQueue.push(firstPrompt)
+  // WORKAROUND: The V2 SDKSessionOptions type doesn't include `cwd`, and the
+  // SDK's SDKSession class doesn't forward it to the ProcessTransport. The
+  // subprocess inherits process.cwd() from the parent. Since createSession()
+  // and resumeSession() are synchronous (spawn the subprocess immediately in
+  // the constructor), we temporarily chdir so the subprocess picks up the
+  // correct directory.
+  const originalCwd = process.cwd()
+  try {
+    process.chdir(cwd)
+  } catch (err) {
+    console.warn('[agentSdk] Failed to chdir to', cwd, err)
+  }
 
-  const queryObj = query({
-    prompt: messageQueue as unknown as Parameters<typeof query>[0]['prompt'],
-    options: queryOptions as Parameters<typeof query>[0]['options'],
-  })
-  session.queryObj = queryObj
+  let sdkSession
+  if (options.sdkSessionId && options.sdkSessionId.length > 0) {
+    // Resume existing session — restores conversation context across app restarts
+    console.log('[agentSdk] Resuming session:', options.sdkSessionId)
+    sdkSession = unstable_v2_resumeSession(
+      options.sdkSessionId,
+      sessionOptions as Parameters<typeof unstable_v2_resumeSession>[1],
+    )
+  } else {
+    sdkSession = unstable_v2_createSession(
+      sessionOptions as Parameters<typeof unstable_v2_createSession>[0],
+    )
+  }
 
   try {
-    for await (const message of queryObj) {
-      if (!activeSessions.has(sessionId)) break
-      const msg = message as unknown as Record<string, unknown>
-      processAndSendMessage(sessionId, msg, win)
+    process.chdir(originalCwd)
+  } catch {
+    // Best-effort restore
+  }
 
-      // When a result arrives, the current turn is done — signal idle
-      if (msg.type === 'result') {
-        const sdkSessionId = session.sdkSessionId ?? ''
-        win.webContents.send(`agentSdk:done:${sessionId}`, sdkSessionId)
-      }
-    }
+  const session: ActiveSession = {
+    sdkSession: sdkSession as ActiveSession['sdkSession'],
+    sdkSessionId: options.sdkSessionId,
+    ownerWindow: win,
+    pendingPermission: null,
+    initSent: false,
+  }
+  activeSessions.set(sessionId, session)
+
+  // V2 pattern: send() then stream() for each turn
+  try {
+    console.log('[agentSdk] Sending first prompt...')
+    await sdkSession.send(firstPrompt)
+    console.log('[agentSdk] First prompt sent, starting stream...')
+    await streamTurn(sessionId, session, win)
+    console.log('[agentSdk] First turn stream completed')
   } catch (err: unknown) {
     const errorMessage = err instanceof Error ? err.message : String(err)
-    if (errorMessage.includes('aborted')) {
-      // User cancelled — not an error
-    } else if (errorMessage.includes('No conversation found') && options.sdkSessionId) {
-      // Stale session ID — retry without resume
-      console.log('[agentSdk] Stale session ID, retrying without resume')
-      activeSessions.delete(sessionId)
-      void startSession(sessionId, firstPrompt, cwd, win, {
-        ...options,
-        sdkSessionId: undefined,
-      })
-      return
-    } else {
-      console.error('[agentSdk] Session error:', errorMessage)
-      if (err instanceof Error && err.stack) console.error(err.stack)
-      win.webContents.send(`agentSdk:error:${sessionId}`, errorMessage)
-    }
-  } finally {
+    console.error('[agentSdk] startSession error:', errorMessage)
+    if (err instanceof Error && err.stack) console.error(err.stack)
+    win.webContents.send(`agentSdk:error:${sessionId}`, errorMessage)
     activeSessions.delete(sessionId)
   }
 }
@@ -367,8 +366,7 @@ export function register(ipcMain: IpcMain, ctx: HandlerContext): void {
     // Kill any existing session with the same ID
     const existing = activeSessions.get(options.id)
     if (existing) {
-      existing.messageQueue.close()
-      existing.abortController.abort()
+      existing.sdkSession.close()
       activeSessions.delete(options.id)
     }
 
@@ -381,25 +379,33 @@ export function register(ipcMain: IpcMain, ctx: HandlerContext): void {
     return { id: options.id }
   })
 
-  // Send a follow-up message to an existing session via the message queue.
+  // Send a follow-up message to an existing session.
   // If no session exists, starts a new one.
-  ipcMain.handle('agentSdk:send', (_event, id: string, prompt: string, options?: {
+  ipcMain.handle('agentSdk:send', async (_event, id: string, prompt: string, options?: {
     sdkSessionId?: string; cwd?: string; skipApproval?: boolean; env?: Record<string, string>
   }) => {
     const existing = activeSessions.get(id)
     if (existing) {
-      // Push into the queue — the SDK process picks it up
-      console.log('[agentSdk] send: pushing to queue for', id)
-      existing.messageQueue.push(prompt)
+      // Session is alive — send then stream this turn (token-efficient, no restart)
+      console.log('[agentSdk] send: using existing V2 session for', id)
+      try {
+        await existing.sdkSession.send(prompt)
+        await streamTurn(id, existing, existing.ownerWindow)
+      } catch (err: unknown) {
+        const errorMessage = err instanceof Error ? err.message : String(err)
+        console.error('[agentSdk] send error:', errorMessage)
+        existing.ownerWindow.webContents.send(`agentSdk:error:${id}`, errorMessage)
+        activeSessions.delete(id)
+      }
       return
     }
 
-    // No active session — start a new one with the correct cwd
+    // No active session — start a new one
     const senderWindow = BrowserWindow.fromWebContents(_event.sender)
     if (!senderWindow) return
 
     const cwd = options?.cwd ?? process.cwd()
-    console.log('[agentSdk] send: no active session, starting new. cwd:', cwd, 'skipApproval:', options?.skipApproval)
+    console.log('[agentSdk] send: no active session, starting new. cwd:', cwd)
     void startSession(id, prompt, cwd, senderWindow, {
       sdkSessionId: options?.sdkSessionId,
       skipApproval: options?.skipApproval ?? false,
@@ -410,11 +416,7 @@ export function register(ipcMain: IpcMain, ctx: HandlerContext): void {
   ipcMain.handle('agentSdk:stop', (_event, id: string) => {
     const session = activeSessions.get(id)
     if (session) {
-      session.messageQueue.close()
-      session.abortController.abort()
-      if (session.queryObj) {
-        (session.queryObj as { close(): void }).close()
-      }
+      session.sdkSession.close()
       activeSessions.delete(id)
     }
   })
