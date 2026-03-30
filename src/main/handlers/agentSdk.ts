@@ -334,44 +334,44 @@ function resolveMockResponseText(prompt: string): string {
   return "I'll help you with that. Let me look at the codebase."
 }
 
+/** Tracks which mock sessions have already received their system init message. */
+const mockInitSent = new Set<string>()
+
 /**
  * Send a canned mock agent response sequence for E2E tests.
- * Fires system init, a text reply, and a result/done — all via IPC.
+ * Fires system init (first turn only), a text reply, and a result/done — all synchronously via IPC.
  */
 function sendMockAgentResponse(win: BrowserWindow, sessionId: string, prompt: string): void {
-  const initMsg: AgentSdkMessage = {
-    id: nextMessageId(),
-    type: 'system',
-    timestamp: Date.now(),
-    text: 'Session initialized (model: claude-sonnet-4-20250514)',
-  }
-  win.webContents.send(`agentSdk:message:${sessionId}`, initMsg)
-
-  const responseText = resolveMockResponseText(prompt)
-
-  setTimeout(() => {
-    const textMsg: AgentSdkMessage = {
+  if (!mockInitSent.has(sessionId)) {
+    mockInitSent.add(sessionId)
+    const initMsg: AgentSdkMessage = {
       id: nextMessageId(),
-      type: 'text',
+      type: 'system',
       timestamp: Date.now(),
-      text: responseText,
+      text: 'Session initialized (model: claude-sonnet-4-20250514)',
     }
-    win.webContents.send(`agentSdk:message:${sessionId}`, textMsg)
+    win.webContents.send(`agentSdk:message:${sessionId}`, initMsg)
+  }
 
-    setTimeout(() => {
-      const resultMsg: AgentSdkMessage = {
-        id: nextMessageId(),
-        type: 'result',
-        timestamp: Date.now(),
-        result: 'Task completed successfully.',
-        costUsd: 0.01,
-        durationMs: 2000,
-        numTurns: 1,
-      }
-      win.webContents.send(`agentSdk:message:${sessionId}`, resultMsg)
-      win.webContents.send(`agentSdk:done:${sessionId}`, 'mock-session-id')
-    }, 500)
-  }, 200)
+  const textMsg: AgentSdkMessage = {
+    id: nextMessageId(),
+    type: 'text',
+    timestamp: Date.now(),
+    text: resolveMockResponseText(prompt),
+  }
+  win.webContents.send(`agentSdk:message:${sessionId}`, textMsg)
+
+  const resultMsg: AgentSdkMessage = {
+    id: nextMessageId(),
+    type: 'result',
+    timestamp: Date.now(),
+    result: 'Task completed successfully.',
+    costUsd: 0.01,
+    durationMs: 2000,
+    numTurns: 1,
+  }
+  win.webContents.send(`agentSdk:message:${sessionId}`, resultMsg)
+  win.webContents.send(`agentSdk:done:${sessionId}`, 'mock-session-id')
 }
 
 export function register(ipcMain: IpcMain, ctx: HandlerContext): void {

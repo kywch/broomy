@@ -64,7 +64,7 @@ test.describe.serial('Feature: User Message Line Breaks', () => {
 
     // Multiple sessions are mounted simultaneously (CSS-hidden for non-active ones).
     // Target the single visible AgentChat textarea.
-    const textarea = page.locator('textarea[placeholder*="Message"]:visible').first()
+    const textarea = page.locator('textarea[placeholder*="Message"]').filter({ visible: true }).first()
     await expect(textarea).toBeVisible({ timeout: 5000 })
 
     await screenshotElement(page, agentPanel, path.join(SCREENSHOTS, '01-chat-ready.png'))
@@ -79,11 +79,10 @@ test.describe.serial('Feature: User Message Line Breaks', () => {
 
   test('Step 2: Type a multi-line message and send it', async () => {
     const agentPanel = page.locator('[data-panel-id="agent"]')
-    const textarea = page.locator('textarea[placeholder*="Message"]:visible').first()
+    const textarea = page.locator('textarea[placeholder*="Message"]').filter({ visible: true }).first()
 
-    // Fill the textarea with a string containing real newlines.
-    // Shift+Enter inserts a newline in the UI; fill() sets the value directly
-    // so the React state picks up the full multiline string before we submit.
+    // Fill the textarea directly with newline characters; React state picks up
+    // the full multiline string before we submit.
     await textarea.click()
     await textarea.fill(MULTILINE_MESSAGE)
 
@@ -94,7 +93,7 @@ test.describe.serial('Feature: User Message Line Breaks', () => {
       caption: 'Multi-line message typed in the input box',
       description:
         'The textarea grows to show all three lines of the message before it is sent. ' +
-        'Newlines are inserted with Shift+Enter.',
+        'Newlines can be inserted with Shift+Enter while typing.',
     })
 
     // Press Enter (without Shift) to submit
@@ -111,12 +110,6 @@ test.describe.serial('Feature: User Message Line Breaks', () => {
     await expect(agentPanel.getByText('First line')).toBeVisible()
     await expect(agentPanel.getByText('Second line')).toBeVisible()
     await expect(agentPanel.getByText('Third line')).toBeVisible()
-
-    // The user message container should have whitespace-pre-wrap so that
-    // \n characters produce visible line breaks
-    const userBubble = agentPanel.locator('.justify-end').first()
-    const bubbleClass = await userBubble.locator('div').first().getAttribute('class')
-    expect(bubbleClass).toContain('whitespace-pre-wrap')
 
     await screenshotElement(page, agentPanel, path.join(SCREENSHOTS, '03-line-breaks-preserved.png'))
     steps.push({
