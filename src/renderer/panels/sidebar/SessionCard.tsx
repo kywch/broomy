@@ -9,15 +9,8 @@ import { memo, useEffect, useState } from 'react'
 import { useSessionStore } from '../../store/sessions'
 import { useShallow } from 'zustand/react/shallow'
 import type { SessionStatus, BranchStatus } from '../../store/sessions'
-
-function formatElapsedTime(seconds: number): string {
-  if (seconds < 60) return `${seconds}s`
-  const m = Math.floor(seconds / 60)
-  const s = seconds % 60
-  if (m < 60) return `${m}m ${String(s).padStart(2, '0')}s`
-  const h = Math.floor(m / 60)
-  return `${h}h ${String(m % 60).padStart(2, '0')}m`
-}
+import { formatElapsedTime } from '../../shared/utils/formatTime'
+import { useElapsedSeconds } from '../../shared/hooks/useElapsedSeconds'
 
 const statusLabels: Record<SessionStatus, string> = {
   working: 'Working',
@@ -117,7 +110,6 @@ export default memo(function SessionCard({
         branch: sess.branch,
         name: sess.name,
         lastMessage: sess.lastMessage,
-        workingStartTime: sess.workingStartTime,
         branchStatus: sess.branchStatus,
         prNumber: sess.prNumber,
         isArchived: sess.isArchived,
@@ -143,19 +135,7 @@ export default memo(function SessionCard({
     }
   }, [session?.status])
 
-  const [elapsedSeconds, setElapsedSeconds] = useState(0)
-  useEffect(() => {
-    const start = session?.workingStartTime
-    if (!start || !showWorking) {
-      setElapsedSeconds(0)
-      return
-    }
-    setElapsedSeconds(Math.floor((Date.now() - start) / 1000))
-    const interval = setInterval(() => {
-      setElapsedSeconds(Math.floor((Date.now() - start) / 1000))
-    }, 1000)
-    return () => clearInterval(interval)
-  }, [session?.workingStartTime, showWorking])
+  const elapsedSeconds = useElapsedSeconds(sessionId)
 
   if (!session) return null
 

@@ -4,41 +4,17 @@
  * Replaces the xterm Terminal for Claude sessions using the Agent SDK,
  * rendering structured messages instead of terminal output.
  */
-import { useRef, useEffect, useCallback, memo, useState } from 'react'
+import { useRef, useEffect, useCallback, memo } from 'react'
 import { useAgentChatStore } from '../../store/agentChat'
 import { useSessionStore } from '../../store/sessions'
 import { AgentChatMessage, ToolGroupBlock } from './AgentChatMessage'
 import type { AgentSdkMessage } from '../../../shared/agentSdkTypes'
 import { AgentChatInput } from './AgentChatInput'
 import { PermissionRequest } from './AgentPermissionRequest'
+import { formatElapsedTime } from '../../shared/utils/formatTime'
+import { useElapsedSeconds } from '../../shared/hooks/useElapsedSeconds'
 
 import { useAgentSdk } from './hooks/useAgentSdk'
-
-function formatElapsedTime(seconds: number): string {
-  if (seconds < 60) return `${seconds}s`
-  const m = Math.floor(seconds / 60)
-  const s = seconds % 60
-  if (m < 60) return `${m}m ${String(s).padStart(2, '0')}s`
-  const h = Math.floor(m / 60)
-  return `${h}h ${String(m % 60).padStart(2, '0')}m`
-}
-
-function useElapsedSeconds(sessionId: string): number {
-  const workingStartTime = useSessionStore((s) => {
-    const sess = s.sessions.find(ss => ss.id === sessionId)
-    return sess?.workingStartTime ?? null
-  })
-  const [elapsedSeconds, setElapsedSeconds] = useState(0)
-  useEffect(() => {
-    if (!workingStartTime) { setElapsedSeconds(0); return }
-    setElapsedSeconds(Math.floor((Date.now() - workingStartTime) / 1000))
-    const interval = setInterval(() => {
-      setElapsedSeconds(Math.floor((Date.now() - workingStartTime) / 1000))
-    }, 1000)
-    return () => clearInterval(interval)
-  }, [workingStartTime])
-  return elapsedSeconds
-}
 
 interface AgentChatProps {
   sessionId: string
@@ -240,7 +216,7 @@ function AgentChatInner({ sessionId, cwd, sdkSessionId, skipApproval, env }: Age
         })()}
 
         {/* Loading indicator */}
-        {state === 'running' && (
+        {isRunning && (
           <div className="my-2 flex items-center gap-2 text-xs text-neutral-400">
             <div className="h-1.5 w-1.5 animate-pulse rounded-full bg-blue-400" />
             Working...
