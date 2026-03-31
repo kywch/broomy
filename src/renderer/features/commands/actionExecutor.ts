@@ -107,7 +107,7 @@ async function executeAgentAction(
       const agent = ctx.agentId ? useAgentStore.getState().agents.find((a: AgentConfig) => a.id === ctx.agentId) : undefined
       void window.agentSdk.send(apiSessionId, prompt, {
         cwd: ctx.directory,
-        permissionMode: (repo?.skipApproval ? 'bypassPermissions' : 'default') as 'default' | 'bypassPermissions',
+        permissionMode: (repo?.skipApproval ? 'bypassPermissions' : 'default'),
         env: agent?.env,
         sdkSessionId: session?.sdkSessionId,
       })

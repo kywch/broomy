@@ -49,8 +49,8 @@ export function NewSessionDialog({ onComplete, onCancel, onStartBranch, onStartE
       ))
       if (focusable.length === 0) return
 
-      const first = focusable[0] as HTMLElement
-      const last = focusable[focusable.length - 1] as HTMLElement
+      const first = focusable[0]
+      const last = focusable[focusable.length - 1]
       const activeIndex = focusable.indexOf(document.activeElement as HTMLElement)
       const isAtEdgeOrOutside = activeIndex === -1
 

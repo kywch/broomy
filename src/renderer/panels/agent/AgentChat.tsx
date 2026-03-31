@@ -12,6 +12,8 @@ import type { AgentSdkMessage } from '../../../shared/agentSdkTypes'
 import { AgentChatInput } from './AgentChatInput'
 import { PermissionRequest } from './AgentPermissionRequest'
 import { useSdkModels, DEFAULT_MODEL } from '../../shared/hooks/useSdkModels'
+import { formatElapsedTime } from '../../shared/utils/formatTime'
+import { useElapsedSeconds } from '../../shared/hooks/useElapsedSeconds'
 import { useAgentSdk } from './hooks/useAgentSdk'
 
 interface AgentChatProps {
@@ -23,6 +25,23 @@ interface AgentChatProps {
   isRestored?: boolean
   model?: string
   effort?: 'low' | 'medium' | 'high' | 'max'
+}
+
+function EmptyState({ hasSdkSession }: { hasSdkSession: boolean }) {
+  return (
+    <div className="flex h-full items-center justify-center">
+      <div className="text-center text-neutral-500">
+        <p className="text-sm">
+          {hasSdkSession
+            ? 'Previous session will be resumed. Send a message to continue.'
+            : 'Send a message to start working with Claude.'}
+        </p>
+        <p className="mt-2 text-xs text-neutral-600">
+          Enter to send, Shift+Enter for newline
+        </p>
+      </div>
+    </div>
+  )
 }
 
 function AgentChatInner({ sessionId, cwd, sdkSessionId, skipApproval, env, model: modelProp, effort: effortProp }: AgentChatProps) {
@@ -53,7 +72,7 @@ function AgentChatInner({ sessionId, cwd, sdkSessionId, skipApproval, env, model
     selectFile(sessionId, filePath)
   }, [sessionId, selectFile])
 
-  const { sendPrompt, stopAgent, respondToPermission, availableCommands, historyMeta, loadFullHistory } = useAgentSdk({
+  const { sendPrompt, queuePrompt, stopAgent, respondToPermission, availableCommands, historyMeta, loadFullHistory } = useAgentSdk({
     sessionId,
     cwd,
     sdkSessionId,
@@ -100,6 +119,7 @@ function AgentChatInner({ sessionId, cwd, sdkSessionId, skipApproval, env, model
   }, [messages])
 
   const isRunning = state === 'running' || state === 'awaiting_permission'
+  const elapsedSeconds = useElapsedSeconds(sessionId)
 
   return (
     <div className="flex h-full flex-col bg-[#1a1a1a]">
@@ -108,20 +128,7 @@ function AgentChatInner({ sessionId, cwd, sdkSessionId, skipApproval, env, model
         ref={scrollContainerRef}
         className="flex-1 overflow-y-auto px-4 py-3"
       >
-        {messages.length === 0 && !isRunning && (
-          <div className="flex h-full items-center justify-center">
-            <div className="text-center text-neutral-500">
-              <p className="text-sm">
-                {hasSdkSession
-                  ? 'Previous session will be resumed. Send a message to continue.'
-                  : 'Send a message to start working with Claude.'}
-              </p>
-              <p className="mt-2 text-xs text-neutral-600">
-                Enter to send, Shift+Enter for newline
-              </p>
-            </div>
-          </div>
-        )}
+        {messages.length === 0 && !isRunning && <EmptyState hasSdkSession={hasSdkSession} />}
 
         {/* Load earlier messages button */}
         {historyMeta && (
@@ -224,10 +231,13 @@ function AgentChatInner({ sessionId, cwd, sdkSessionId, skipApproval, env, model
         })()}
 
         {/* Loading indicator */}
-        {state === 'running' && (
+        {isRunning && (
           <div className="my-2 flex items-center gap-2 text-xs text-neutral-400">
             <div className="h-1.5 w-1.5 animate-pulse rounded-full bg-blue-400" />
             Working...
+            {elapsedSeconds > 0 && (
+              <span className="text-neutral-500">{formatElapsedTime(elapsedSeconds)}</span>
+            )}
           </div>
         )}
 
@@ -245,6 +255,7 @@ function AgentChatInner({ sessionId, cwd, sdkSessionId, skipApproval, env, model
       {/* Input area */}
       <AgentChatInput
         onSubmit={sendPrompt}
+        onQueue={queuePrompt}
         onStop={stopAgent}
         isRunning={state === 'running'}
         disabled={state === 'awaiting_permission'}

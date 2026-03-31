@@ -182,7 +182,8 @@ function WebviewViewerComponent({ filePath, onEditorReady }: FileViewerComponent
           ref={webviewRef as React.Ref<Electron.WebviewTag>}
           src={filePath}
           className="w-full h-full"
-          allowpopups={true}
+          // @ts-expect-error allowpopups is a string attribute in the DOM but typed as boolean in Electron
+          allowpopups="true"
         />
       </div>
     </div>

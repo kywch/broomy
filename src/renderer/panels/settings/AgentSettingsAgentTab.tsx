@@ -349,8 +349,8 @@ function ApiModeOptions({ model, effort, models, modelsLoading, onModelChange, o
   onEffortChange?: (v: string) => void
 }) {
   const selectedModel = models.find((m) => m.value === model) ?? models[0]
-  const effortLevels = selectedModel?.supportedEffortLevels ?? []
-  const supportsEffort = selectedModel?.supportsEffort && effortLevels.length > 0
+  const effortLevels = selectedModel.supportedEffortLevels ?? []
+  const supportsEffort = effortLevels.length > 0 && !!selectedModel.supportsEffort
 
   // If current effort isn't supported by the new model, clear it
   const effectiveEffort = (supportsEffort && effortLevels.includes(effort as 'low' | 'medium' | 'high' | 'max'))

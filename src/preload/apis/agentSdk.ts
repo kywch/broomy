@@ -8,6 +8,7 @@ import type { SdkModelInfo, PermissionMode } from './types'
 export type AgentSdkApi = {
   start: (options: { id: string; prompt: string; cwd: string; sdkSessionId?: string; permissionMode?: PermissionMode; env?: Record<string, string>; model?: string; effort?: 'low' | 'medium' | 'high' | 'max' }) => Promise<{ id: string }>
   send: (id: string, prompt: string, options?: { sdkSessionId?: string; cwd?: string; permissionMode?: PermissionMode; env?: Record<string, string>; model?: string; effort?: 'low' | 'medium' | 'high' | 'max' }) => Promise<void>
+  inject: (id: string, prompt: string) => Promise<void>
   stop: (id: string) => Promise<void>
   respondToPermission: (id: string, toolUseId: string, allowed: boolean, updatedInput?: Record<string, unknown>) => Promise<void>
   onMessage: (id: string, cb: (msg: AgentSdkMessage) => void) => () => void
@@ -25,6 +26,7 @@ export type AgentSdkApi = {
 export const agentSdkApi: AgentSdkApi = {
   start: (options) => ipcRenderer.invoke('agentSdk:start', options),
   send: (id, prompt, options) => ipcRenderer.invoke('agentSdk:send', id, prompt, options),
+  inject: (id, prompt) => ipcRenderer.invoke('agentSdk:inject', id, prompt),
   stop: (id) => ipcRenderer.invoke('agentSdk:stop', id),
   respondToPermission: (id, toolUseId, allowed, updatedInput) => ipcRenderer.invoke('agentSdk:respond', id, toolUseId, allowed, updatedInput),
   onMessage: (id, cb) => {
