@@ -4,14 +4,14 @@
  * Replaces the xterm Terminal for Claude sessions using the Agent SDK,
  * rendering structured messages instead of terminal output.
  */
-import { useRef, useEffect, useCallback, memo } from 'react'
+import { useRef, useEffect, useCallback, memo, useState } from 'react'
 import { useAgentChatStore } from '../../store/agentChat'
 import { useSessionStore } from '../../store/sessions'
 import { AgentChatMessage, ToolGroupBlock } from './AgentChatMessage'
 import type { AgentSdkMessage } from '../../../shared/agentSdkTypes'
 import { AgentChatInput } from './AgentChatInput'
 import { PermissionRequest } from './AgentPermissionRequest'
-
+import { useSdkModels, DEFAULT_MODEL } from '../../shared/hooks/useSdkModels'
 import { useAgentSdk } from './hooks/useAgentSdk'
 
 interface AgentChatProps {
@@ -21,9 +21,11 @@ interface AgentChatProps {
   skipApproval: boolean
   env?: Record<string, string>
   isRestored?: boolean
+  model?: string
+  effort?: 'low' | 'medium' | 'high' | 'max'
 }
 
-function AgentChatInner({ sessionId, cwd, sdkSessionId, skipApproval, env }: AgentChatProps) {
+function AgentChatInner({ sessionId, cwd, sdkSessionId, skipApproval, env, model: modelProp, effort: effortProp }: AgentChatProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   // Track whether to auto-scroll. We check the position BEFORE new content
@@ -31,6 +33,13 @@ function AgentChatInner({ sessionId, cwd, sdkSessionId, skipApproval, env }: Age
   // sets it back to true, defeating the purpose.
   const shouldAutoScrollRef = useRef(true)
   const prevMessageCountRef = useRef(0)
+
+  const [model, setModel] = useState(modelProp ?? DEFAULT_MODEL)
+  const [effort, setEffort] = useState(effortProp ?? '')
+  const [permissionMode, setPermissionMode] = useState<'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'dontAsk'>(
+    skipApproval ? 'bypassPermissions' : 'default'
+  )
+  const { models } = useSdkModels()
 
   const chatSession = useAgentChatStore((s) => s.getSession(sessionId))
   const { messages, state, pendingPermission } = chatSession
@@ -48,8 +57,10 @@ function AgentChatInner({ sessionId, cwd, sdkSessionId, skipApproval, env }: Age
     sessionId,
     cwd,
     sdkSessionId,
-    skipApproval,
+    permissionMode,
     env,
+    model,
+    effort: (effort || undefined) as 'low' | 'medium' | 'high' | 'max' | undefined,
   })
 
   // Before new messages render, snapshot whether we're at the bottom
@@ -239,6 +250,13 @@ function AgentChatInner({ sessionId, cwd, sdkSessionId, skipApproval, env }: Age
         disabled={state === 'awaiting_permission'}
         sessionId={sessionId}
         availableCommands={availableCommands}
+        model={model}
+        effort={effort}
+        availableModels={models}
+        onModelChange={setModel}
+        onEffortChange={setEffort}
+        permissionMode={permissionMode}
+        onPermissionModeChange={setPermissionMode}
       />
     </div>
   )
