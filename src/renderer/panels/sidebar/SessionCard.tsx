@@ -10,6 +10,15 @@ import { useSessionStore } from '../../store/sessions'
 import { useShallow } from 'zustand/react/shallow'
 import type { SessionStatus, BranchStatus } from '../../store/sessions'
 
+function formatElapsedTime(seconds: number): string {
+  if (seconds < 60) return `${seconds}s`
+  const m = Math.floor(seconds / 60)
+  const s = seconds % 60
+  if (m < 60) return `${m}m ${String(s).padStart(2, '0')}s`
+  const h = Math.floor(m / 60)
+  return `${h}h ${String(m % 60).padStart(2, '0')}m`
+}
+
 const statusLabels: Record<SessionStatus, string> = {
   working: 'Working',
   idle: 'Idle',
@@ -108,6 +117,7 @@ export default memo(function SessionCard({
         branch: sess.branch,
         name: sess.name,
         lastMessage: sess.lastMessage,
+        workingStartTime: sess.workingStartTime,
         branchStatus: sess.branchStatus,
         prNumber: sess.prNumber,
         isArchived: sess.isArchived,
@@ -132,6 +142,20 @@ export default memo(function SessionCard({
       setShowWorking(false)
     }
   }, [session?.status])
+
+  const [elapsedSeconds, setElapsedSeconds] = useState(0)
+  useEffect(() => {
+    const start = session?.workingStartTime
+    if (!start || !showWorking) {
+      setElapsedSeconds(0)
+      return
+    }
+    setElapsedSeconds(Math.floor((Date.now() - start) / 1000))
+    const interval = setInterval(() => {
+      setElapsedSeconds(Math.floor((Date.now() - start) / 1000))
+    }, 1000)
+    return () => clearInterval(interval)
+  }, [session?.workingStartTime, showWorking])
 
   if (!session) return null
 
@@ -239,14 +263,20 @@ export default memo(function SessionCard({
           {session.initError}
         </div>
       ) : session.lastMessage ? (
-        <div className={`text-xs mt-1 truncate ${
+        <div className={`text-xs mt-1 flex items-center gap-1.5 ${
           isUnread ? 'text-text-secondary' : 'text-text-secondary/60'
         }`}>
-          "{session.lastMessage}"
+          <span className="truncate">"{session.lastMessage}"</span>
+          {showWorking && elapsedSeconds > 0 && (
+            <span className="flex-shrink-0 text-text-secondary/40">{formatElapsedTime(elapsedSeconds)}</span>
+          )}
         </div>
       ) : (
-        <div className="text-xs text-text-secondary/60 mt-1 truncate">
-          {statusLabels[displayStatus]}
+        <div className="text-xs text-text-secondary/60 mt-1 flex items-center gap-1.5">
+          <span className="truncate">{statusLabels[displayStatus]}</span>
+          {showWorking && elapsedSeconds > 0 && (
+            <span className="flex-shrink-0 text-text-secondary/40">{formatElapsedTime(elapsedSeconds)}</span>
+          )}
         </div>
       )}
     </div>
