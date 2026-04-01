@@ -1,7 +1,7 @@
 /**
  * Prompt input for the Agent SDK chat view with slash command autocomplete.
  */
-import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
+import { useState, useCallback, useRef, useEffect, useMemo, type RefObject } from 'react'
 import type { SdkModelInfo } from '../../../preload/apis/types'
 
 // Commands we handle ourselves (not in the SDK)
@@ -40,12 +40,14 @@ interface AgentChatInputProps {
   onEffortChange?: (effort: string) => void
   permissionMode?: PermissionMode
   onPermissionModeChange?: (mode: PermissionMode) => void
+  textareaRef?: RefObject<HTMLTextAreaElement>
 }
 
-export function AgentChatInput({ onSubmit, onQueue, onStop, isRunning, disabled, sessionId, availableCommands, model, effort, availableModels, onModelChange, onEffortChange, permissionMode, onPermissionModeChange }: AgentChatInputProps) {
+export function AgentChatInput({ onSubmit, onQueue, onStop, isRunning, disabled, sessionId, availableCommands, model, effort, availableModels, onModelChange, onEffortChange, permissionMode, onPermissionModeChange, textareaRef: externalRef }: AgentChatInputProps) {
   const [value, setValue] = useState('')
   const [selectedIndex, setSelectedIndex] = useState(0)
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const internalRef = useRef<HTMLTextAreaElement>(null)
+  const textareaRef = externalRef ?? internalRef
 
   // Auto-focus on mount and session changes
   useEffect(() => {
