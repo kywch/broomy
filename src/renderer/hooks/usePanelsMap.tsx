@@ -13,7 +13,7 @@ import WelcomeScreen from '../panels/agent/WelcomeScreen'
 import TutorialPanel from '../panels/tutorial/TutorialPanel'
 import { useSessionStore, type Session } from '../store/sessions'
 import { PANEL_IDS } from '../panels'
-import { useIssuePlanDetection } from '../panels/explorer/hooks/useIssuePlanDetection'
+import { useOutputDirWatcher } from '../panels/explorer/hooks/useIssuePlanDetection'
 import type { FileStatus, ViewMode } from '../panels/fileViewer/FileViewer'
 import type { GitFileStatus, GitStatusResult, ManagedRepo } from '../../preload/index'
 import type { ExplorerFilter, PrState } from '../store/sessions'
@@ -108,7 +108,7 @@ function useExplorerPanel(config: PanelsMapConfig) {
     updatePrState, repos,
   } = config
 
-  const issuePlanExists = useIssuePlanDetection(activeSessionId, activeSession?.directory)
+  const { issuePlanExists, suggestGitignore, dismissGitignore } = useOutputDirWatcher(activeSessionId, activeSession?.directory)
 
   const activeRepo = useMemo(() =>
     repos.find(r => r.id === activeSession?.repoId),
@@ -148,9 +148,11 @@ function useExplorerPanel(config: PanelsMapConfig) {
         issueTitle={activeSession.issueTitle}
         issueUrl={activeSession.issueUrl}
         issuePlanExists={issuePlanExists}
+        suggestGitignore={suggestGitignore}
+        onDismissGitignore={dismissGitignore}
       />
     )
-  }, [activeSessionId, activeSession, activeSessionGitStatus, activeSessionGitStatusResult, navigateToFile, fetchGitStatus, activeRepo, issuePlanExists, handleFilterChange, handleUpdatePrState])
+  }, [activeSessionId, activeSession, activeSessionGitStatus, activeSessionGitStatusResult, navigateToFile, fetchGitStatus, activeRepo, issuePlanExists, suggestGitignore, dismissGitignore, handleFilterChange, handleUpdatePrState])
 }
 
 function useFileViewerPanel(config: PanelsMapConfig) {
