@@ -57,6 +57,7 @@ function agentStatusLabel(messages: AgentSdkMessage[], state: string): string {
 function AgentChatInner({ sessionId, cwd, sdkSessionId, skipApproval, env, model: modelProp, effort: effortProp }: AgentChatProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
+  const composerRef = useRef<HTMLTextAreaElement>(null)
   // Track whether to auto-scroll. We check the position BEFORE new content
   // renders, not after — otherwise scrollIntoView triggers onScroll which
   // sets it back to true, defeating the purpose.
@@ -131,8 +132,17 @@ function AgentChatInner({ sessionId, cwd, sdkSessionId, skipApproval, env, model
   const isRunning = state === 'running' || state === 'awaiting_permission'
   const elapsedSeconds = useElapsedSeconds(sessionId)
 
+  const handleContainerClick = useCallback((e: React.MouseEvent) => {
+    // Focus the composer when clicking in the chat area, unless the user
+    // is clicking on an interactive element (button, link, select, etc.)
+    const tag = (e.target as HTMLElement).closest('button, a, select, textarea, input')
+    if (!tag) {
+      composerRef.current?.focus()
+    }
+  }, [])
+
   return (
-    <div className="flex h-full flex-col bg-[#1a1a1a]">
+    <div className="flex h-full flex-col bg-[#1a1a1a]" onClick={handleContainerClick}>
       {/* Messages area */}
       <div
         ref={scrollContainerRef}
@@ -278,6 +288,7 @@ function AgentChatInner({ sessionId, cwd, sdkSessionId, skipApproval, env, model
         onEffortChange={setEffort}
         permissionMode={permissionMode}
         onPermissionModeChange={setPermissionMode}
+        textareaRef={composerRef}
       />
     </div>
   )
