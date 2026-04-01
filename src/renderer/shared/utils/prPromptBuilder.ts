@@ -52,17 +52,9 @@ If the repo has an obvious way to generate screenshot walkthroughs (e.g. a featu
 
 ## Action
 
-1. Create the PR:
-   \`\`\`
-   gh pr create --title "<title>" --body "<body>"
-   \`\`\`
-2. After creating the PR, write the result to \`.broomy/output/pr-result.json\`:
-   \`\`\`json
-   {
-     "url": "<the PR URL returned by gh>",
-     "number": <PR number>,
-     "title": "<the title you used>"
-   }
-   \`\`\`
+Create the PR:
+\`\`\`
+gh pr create --title "<title>" --body "<body>"
+\`\`\`
 `
 }
