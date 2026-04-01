@@ -10,7 +10,7 @@ import { loadMonacoProjectContext } from '../../../shared/utils/monacoProjectCon
 import { restoreSessionFocus } from '../../../shared/utils/focusHelpers'
 
 export function useSessionLifecycle({
-  sessions,
+  sessions: _sessions,
   activeSession,
   activeSessionId,
   currentProfileId,
