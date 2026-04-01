@@ -45,6 +45,27 @@ export function createBranchActions(get: StoreGet, set: StoreSet) {
       set({ sessions: updatedSessions })
     },
 
+    updateSessionBranch: (sessionId: string, branch: string) => {
+      const { sessions } = get()
+      const session = sessions.find((s) => s.id === sessionId)
+      if (!session || session.branch === branch) return
+      const updatedSessions = sessions.map((s) =>
+        s.id === sessionId
+          ? {
+              ...s,
+              branch,
+              hasHadCommits: false,
+              lastKnownPrState: undefined,
+              lastKnownPrNumber: undefined,
+              lastKnownPrUrl: undefined,
+              branchStatus: 'none' as BranchStatus,
+            }
+          : s
+      )
+      set({ sessions: updatedSessions })
+      debouncedSave()
+    },
+
     updatePrState: (sessionId: string, prState: PrState, prNumber?: number, prUrl?: string) => {
       const { sessions } = get()
       const updatedSessions = sessions.map((s) =>
