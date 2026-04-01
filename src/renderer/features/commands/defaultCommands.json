@@ -20,9 +20,9 @@
     {
       "id": "sync",
       "label": "Sync Changes",
-      "type": "shell",
-      "command": "git pull && git push",
-      "showWhen": ["clean", "!no-tracking", "ahead|behind"],
+      "type": "agent",
+      "prompt": "Sync this branch with {main}. Follow these steps in order:\n\n## Step 1: Commit uncommitted work\n\nRun `git status`. If there are staged or unstaged changes (including untracked files that look like project code), stage and commit them with a clear commit message. Do not commit files that contain secrets or credentials. If the working tree is already clean, skip this step.\n\n## Step 2: Pull latest from {main}\n\nRun `git fetch origin {main}` to get the latest state of {main}.\n\nIf {main} is already up to date with this branch (i.e. no new commits on origin/{main} since the last merge or branch point), tell the user the branch is already up to date and stop here.\n\nOtherwise, continue.\n\n## Step 3: Understand what changed on {main}\n\nFind the merge base: `git merge-base HEAD origin/{main}`\n\nList PRs merged into {main} since the merge base:\n```\ngh pr list --state merged --base {main} --search \"merged:>$(git log -1 --format=%ci <merge-base>)\" --limit 20 --json number,title,author,mergedAt,body\n```\n\nSummarize the merged PRs for context (title, author, and a one-line summary of what each changed). This helps understand the intent behind changes that might conflict.\n\n## Step 4: Merge {main} into this branch\n\nRun `git merge origin/{main}`.\n\nIf the merge completes cleanly with no conflicts, skip to Step 6.\n\n## Step 5: Resolve conflicts\n\nIf there are merge conflicts:\n\n1. Run `git status` to list all conflicted files.\n2. For each conflicted file, examine the conflict markers and understand both sides:\n   - Run `git log --oneline HEAD...MERGE_HEAD -- <file>` to see the commit history for both sides\n   - Use the PR context from Step 3 to understand the *intent* behind the incoming changes\n3. Categorize each conflict:\n   - **Obvious**: Mechanical conflicts (e.g. both sides added imports, adjacent line changes) — resolve these automatically\n   - **Non-obvious**: Semantic conflicts where the correct resolution depends on product intent, or where both sides made deliberate but incompatible changes — ASK THE USER how to resolve these before proceeding\n4. Also check for **semantic conflicts** that git won't flag: places where the merge is syntactically clean but the combined code is logically incorrect. For example:\n   - A function signature changed on {main} but this branch calls it with the old signature\n   - A variable/type was renamed on {main} but this branch references the old name\n   - A feature was removed on {main} but this branch extends it\n   - Configuration or API changes on {main} that affect code on this branch\n   Run `git diff origin/{main}...HEAD` and cross-reference with `git diff $(git merge-base HEAD origin/{main})...origin/{main}` to find these.\n5. Fix all conflicts and semantic issues. Stage the resolved files.\n\n## Step 6: Validate\n\nRun the project's validation checks (lint, typecheck, tests). Fix any failures — all checks must pass with zero errors. If you fix anything, amend the merge commit or create a follow-up commit.\n\n## Step 7: Complete the merge\n\nIf there were conflicts, complete the merge: `git commit --no-edit`\n\nThen push the branch to its remote tracking branch. If there is no remote tracking branch yet, run `git push -u origin HEAD`.\n\nSummarize what was merged and any conflicts that were resolved.",
+      "showWhen": ["behind-main", "!on-main", "!merging"],
       "style": "primary"
     },
     {
@@ -32,14 +32,6 @@
       "command": "git push -u origin HEAD",
       "showWhen": ["clean", "no-tracking", "!on-main"],
       "style": "primary"
-    },
-    {
-      "id": "sync-main",
-      "label": "Get latest from {main}",
-      "type": "shell",
-      "command": "git fetch origin {main} && git merge origin/{main}",
-      "showWhen": ["clean", "behind-main"],
-      "style": "secondary"
     },
     {
       "id": "create-pr",
