@@ -174,6 +174,7 @@ interface SessionStore {
   markHasHadCommits: (sessionId: string) => void
   clearHasHadCommits: (sessionId: string) => void
   updateBranchStatus: (sessionId: string, status: BranchStatus) => void
+  updateSessionBranch: (sessionId: string, branch: string) => void
   updatePrState: (sessionId: string, prState: PrState, prNumber?: number, prUrl?: string) => void
   updateReviewStatus: (sessionId: string, reviewStatus: 'pending' | 'reviewed') => void
   // Search history actions
