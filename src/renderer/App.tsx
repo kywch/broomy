@@ -179,7 +179,7 @@ function AppContent() {
     loadSessions, addSession, addInitializingSession, finalizeSession, failSession, removeSession,
     setActiveSession, togglePanel, toggleGlobalPanel, setSidebarWidth, setToolbarPanels,
     selectFile, setExplorerFilter, setFileViewerPosition, updateLayoutSize, markSessionRead,
-    markHasHadCommits, clearHasHadCommits, updateBranchStatus, updatePrState, updateReviewStatus, archiveSession,
+    markHasHadCommits, clearHasHadCommits, updateBranchStatus, updateSessionBranch, updatePrState, updateReviewStatus, archiveSession,
     unarchiveSession, setPanelVisibility, closeCommandsEditor,
   } = useMemo(() => useSessionStore.getState(), [])
   const { agents, loadAgents } = useAgentStore()
@@ -193,7 +193,7 @@ function AppContent() {
   const [duplicateSessionInfo, setDuplicateSessionInfo] = useState<{ name: string; wasArchived: boolean } | null>(null)
   const [appError, setAppError] = useState<string | null>(null)
   const { activeSessionGitStatus, activeSessionGitStatusResult, selectedFileStatus, fetchGitStatus } =
-    useGitPolling({ sessions, activeSession, repos, markHasHadCommits, clearHasHadCommits, updateBranchStatus, updatePrState })
+    useGitPolling({ sessions, activeSession, repos, markHasHadCommits, clearHasHadCommits, updateBranchStatus, updateSessionBranch, updatePrState })
 
   const {
     openFileInDiffMode, scrollToLine, searchHighlight, diffBaseRef, diffCurrentRef, diffLabel,
