@@ -11,6 +11,17 @@ export type BranchStatus = 'in-progress' | 'pushed' | 'empty' | 'open' | 'merged
 
 export type PrState = 'OPEN' | 'MERGED' | 'CLOSED' | null
 
+/**
+ * Status chip value displayed in both the sidebar and source control panel.
+ * This is the single source of truth for the session's visual status.
+ *
+ * - 'in-progress' | 'pushed' | 'empty' | 'merged' | 'closed': from branch status
+ * - 'open': PR is open with no actionable feedback or CI failure
+ * - 'feedback': PR has requested changes or new comments since last push
+ * - 'failed': PR's CI checks have failed
+ */
+export type StatusChip = BranchStatus | 'feedback' | 'failed'
+
 export interface BranchStatusInput {
   // From git status polling
   uncommittedFiles: number
@@ -68,4 +79,23 @@ export function computeBranchStatus(input: BranchStatusInput): BranchStatus {
 
   // 6. Default
   return 'in-progress'
+}
+
+/**
+ * Single function that computes the status chip value from branch status + PR metadata.
+ * Used by both the sidebar and the source control panel to guarantee consistency.
+ *
+ * Priority: feedback > failed > base branch status
+ * (feedback and failed only apply when the PR is open)
+ */
+export function computeStatusChip(
+  branchStatus: BranchStatus,
+  hasFeedback: boolean,
+  checksStatus: 'passed' | 'failed' | 'pending' | 'none',
+): StatusChip {
+  if (branchStatus === 'open') {
+    if (hasFeedback) return 'feedback'
+    if (checksStatus === 'failed') return 'failed'
+  }
+  return branchStatus
 }

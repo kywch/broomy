@@ -2,18 +2,42 @@
  * Banner component showing pull request status and merge conflict alerts.
  */
 import type { GitHubPrStatus } from '../../../../../preload/index'
-import type { BranchStatus } from '../../../../store/sessions'
+import type { BranchStatus, StatusChip } from '../../../../store/sessions'
 import type { NavigationTarget } from '../../../../shared/utils/fileNavigation'
-import { prStateBadgeClass } from '../../../../features/git/explorerHelpers'
 import { DialogErrorBanner } from '../../../../shared/components/ErrorBanner'
 import { useRepoStore } from '../../../../store/repos'
 import { AuthSetupSection, isAuthError } from '../../../../shared/components/AuthSetupSection'
 import { isGitConfigError } from '../../../../shared/components/GitIdentitySetup'
 
+/** CSS classes for the status chip badge in the SCM banner. */
+function statusChipBadgeClass(chip: StatusChip): string {
+  switch (chip) {
+    case 'open': return 'bg-green-500/20 text-green-400'
+    case 'feedback': return 'bg-orange-500/20 text-orange-400'
+    case 'failed': return 'bg-red-500/20 text-red-400'
+    case 'merged': return 'bg-purple-500/20 text-purple-400'
+    case 'closed': return 'bg-red-500/20 text-red-400'
+    default: return 'bg-green-500/20 text-green-400'
+  }
+}
+
+/** Display label for the status chip badge. */
+function statusChipLabel(chip: StatusChip): string {
+  switch (chip) {
+    case 'open': return 'OPEN'
+    case 'feedback': return 'FEEDBACK'
+    case 'failed': return 'FAILED'
+    case 'merged': return 'MERGED'
+    case 'closed': return 'CLOSED'
+    default: return chip.toUpperCase()
+  }
+}
+
 interface SCPrBannerProps {
   prStatus: GitHubPrStatus
   isPrLoading: boolean
   branchStatus?: BranchStatus
+  statusChip?: StatusChip
   branchBaseName: string
   gitOpError: { operation: string; message: string } | null
   onDismissError: () => void
@@ -55,10 +79,10 @@ function RefreshButton({ onRefresh, isRefreshing }: { onRefresh: () => void; isR
 }
 
 function PrStatusContent({
-  prStatus, branchStatus, branchBaseName, issueNumber, issueTitle, issueUrl,
+  prStatus, branchStatus, statusChip, branchBaseName, issueNumber, issueTitle, issueUrl,
   onFileSelect, onRefresh, isRefreshing,
 }: Pick<SCPrBannerProps,
-  'prStatus' | 'branchStatus' | 'branchBaseName' |
+  'prStatus' | 'branchStatus' | 'statusChip' | 'branchBaseName' |
   'issueNumber' | 'issueTitle' | 'issueUrl' |
   'onFileSelect' | 'onRefresh' | 'isRefreshing'
 >) {
@@ -71,11 +95,13 @@ function PrStatusContent({
   )
 
   if (showPr) {
+    // Use statusChip for the badge (single source of truth), falling back to PR state
+    const chip = statusChip ?? (prStatus.state === 'OPEN' ? 'open' : prStatus.state === 'MERGED' ? 'merged' : 'closed')
     return (
       <div className="flex flex-col gap-1">
         <div className="flex items-center gap-2">
-          <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${prStateBadgeClass(prStatus.state)}`}>
-            {prStatus.state}
+          <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${statusChipBadgeClass(chip)}`}>
+            {statusChipLabel(chip)}
           </span>
           <button
             onClick={() => onFileSelect
@@ -129,7 +155,7 @@ function PrStatusContent({
 }
 
 export function SCPrBanner({
-  prStatus, isPrLoading, branchStatus, branchBaseName,
+  prStatus, isPrLoading, branchStatus, statusChip, branchBaseName,
   gitOpError, onDismissError,
   agentMergeMessage, onDismissAgentMerge, issueNumber, issueTitle, issueUrl,
   onRetryGitOp, onFileSelect, onRefresh, isRefreshing,
@@ -140,7 +166,7 @@ export function SCPrBanner({
       {/* PR Status banner */}
       <div className="px-3 py-2 border-b border-border bg-bg-secondary">
         <PrStatusContent
-          prStatus={prStatus} branchStatus={branchStatus}
+          prStatus={prStatus} branchStatus={branchStatus} statusChip={statusChip}
           branchBaseName={branchBaseName}
           issueNumber={issueNumber} issueTitle={issueTitle} issueUrl={issueUrl}
           onFileSelect={onFileSelect} onRefresh={onRefresh} isRefreshing={isRefreshing || isPrLoading}

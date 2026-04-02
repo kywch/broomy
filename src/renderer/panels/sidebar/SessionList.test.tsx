@@ -4,7 +4,7 @@ import { render, screen, fireEvent, cleanup } from '@testing-library/react'
 import '../../../test/react-setup'
 import SessionList from './SessionList'
 import { useSessionStore } from '../../store/sessions'
-import type { Session } from '../../store/sessions'
+import type { Session, StatusChip } from '../../store/sessions'
 
 function makeSession(overrides: Partial<Session> = {}): Session {
   return {
@@ -37,6 +37,9 @@ function makeSession(overrides: Partial<Session> = {}): Session {
     searchHistory: [],
     terminalTabs: { tabs: [{ id: 'tab-1', name: 'Terminal' }], activeTabId: 'tab-1' },
     branchStatus: 'in-progress',
+    hasFeedback: false,
+    checksStatus: 'none' as const,
+    statusChip: 'in-progress' as StatusChip,
     isArchived: false,
     isRestored: false,
     ...overrides,
