@@ -255,7 +255,7 @@ function AppContent() {
     sessions, activeSessionId, agents, repos, addSession, addInitializingSession,
     finalizeSession, failSession, removeSession, setActiveSession,
     togglePanel, updateLayoutSize, setFileViewerPosition, updatePrState,
-    updateFeedbackStatus, updateChecksStatus,
+    updateFeedbackStatus, updateChecksStatus, updateReviewStatus,
     setShowNewSessionDialog, onSessionAlreadyExists: setDuplicateSessionInfo, onError: setAppError,
   })
 

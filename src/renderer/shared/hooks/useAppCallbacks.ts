@@ -8,6 +8,7 @@ import type { AgentConfig } from '../../store/agents'
 import type { PrState } from '../../features/git/branchStatus'
 import type { DuplicateSessionResult } from '../../store/sessionCoreActions'
 import { restoreSessionFocus } from '../utils/focusHelpers'
+import { fetchReviewStatus } from '../utils/reviewStatus'
 import { useBackgroundInit } from '../../panels/settings/useBackgroundInit'
 
 
@@ -28,6 +29,7 @@ interface AppCallbacksDeps {
   updatePrState: (sessionId: string, prState: PrState, prNumber?: number, prUrl?: string) => void
   updateFeedbackStatus: (sessionId: string, hasFeedback: boolean) => void
   updateChecksStatus: (sessionId: string, checksStatus: 'passed' | 'failed' | 'pending' | 'none') => void
+  updateReviewStatus: (sessionId: string, reviewStatus: 'pending' | 'reviewed') => void
   setShowNewSessionDialog: (show: boolean) => void
   onSessionAlreadyExists?: (info: { name: string; wasArchived: boolean }) => void
   onError: (msg: string) => void
@@ -50,6 +52,7 @@ export function useAppCallbacks({
   updatePrState,
   updateFeedbackStatus,
   updateChecksStatus,
+  updateReviewStatus,
   setShowNewSessionDialog,
   onSessionAlreadyExists,
   onError,
@@ -101,8 +104,9 @@ export function useAppCallbacks({
         updateChecksStatus(session.id, 'none')
         updateFeedbackStatus(session.id, false)
       }
+      await fetchReviewStatus(session, updateReviewStatus)
     }))
-  }, [sessions, updatePrState, updateFeedbackStatus, updateChecksStatus])
+  }, [sessions, updatePrState, updateFeedbackStatus, updateChecksStatus, updateReviewStatus])
 
   const getAgentCommand = useCallback((session: Session) => {
     if (!session.agentId) return undefined

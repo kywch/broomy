@@ -34,6 +34,8 @@ export interface ExplorerProps {
   issueTitle?: string
   issueUrl?: string
   issuePlanExists?: boolean
+  suggestGitignore: boolean
+  onDismissGitignore: () => void
 }
 
 export interface TreeNode extends FileEntry {
