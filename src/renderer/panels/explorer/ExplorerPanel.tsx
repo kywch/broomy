@@ -10,6 +10,7 @@ import { SearchPanel } from './tabs/search/SearchPanel'
 import { RecentFiles } from './tabs/recent/RecentFiles'
 import ReviewPanel from './tabs/review/ReviewPanel'
 import { IssuePlanChip } from './IssuePlanChip'
+import { GitignoreChip } from './GitignoreChip'
 import { focusSearchInput } from '../../shared/utils/focusHelpers'
 import PanelErrorBoundary from '../../shared/components/PanelErrorBoundary'
 import { useSessionStore } from '../../store/sessions'
@@ -36,6 +37,8 @@ export default function Explorer({
   issueTitle,
   issueUrl,
   issuePlanExists,
+  suggestGitignore,
+  onDismissGitignore,
 }: ExplorerProps) {
   const openCmdsEditor = useSessionStore(s => s.openCommandsEditor)
   const handleOpenCommandsEditor = useCallback(() => {
@@ -95,6 +98,13 @@ export default function Explorer({
         directory={directory}
         issuePlanExists={issuePlanExists}
         onFileSelect={onFileSelect}
+      />
+
+      {/* Gitignore suggestion chip */}
+      <GitignoreChip
+        directory={directory}
+        showSuggestion={suggestGitignore}
+        onDismiss={onDismissGitignore}
       />
 
       {/* Tab content - scrollable area below pinned toolbar */}
