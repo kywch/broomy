@@ -70,6 +70,7 @@ describe('useGitPolling', () => {
   const markHasHadCommits: (sessionId: string) => void = vi.fn()
   const clearHasHadCommits: (sessionId: string) => void = vi.fn()
   const updateBranchStatus: (sessionId: string, status: BranchStatus) => void = vi.fn()
+  const updateSessionBranch: (sessionId: string, branch: string) => void = vi.fn()
   const updatePrState = vi.fn()
 
   beforeEach(() => {
@@ -97,6 +98,7 @@ describe('useGitPolling', () => {
     markHasHadCommits,
     clearHasHadCommits,
     updateBranchStatus,
+    updateSessionBranch,
     updatePrState,
   }
 
