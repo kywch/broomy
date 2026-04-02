@@ -62,9 +62,10 @@ async function sendAndWait(agentPanel: ReturnType<Page['locator']>, message: str
   await textarea.click()
   await textarea.fill(message)
   await textarea.press('Enter')
-  // Wait for the agent's response text to appear
-  await expect(agentPanel.getByText(responseSnippet)).toBeVisible({ timeout: 8000 })
-  await page.waitForTimeout(300)
+  // Wait for the agent's response text to appear and settle
+  const response = agentPanel.getByText(responseSnippet)
+  await expect(response).toBeVisible({ timeout: 8000 })
+  await response.scrollIntoViewIfNeeded()
 }
 
 /**
@@ -148,7 +149,6 @@ test.describe.serial('Feature: Collapsed History', () => {
     ]
 
     await injectHistoryMessages(sessionId, historyMessages, { total: 35, loaded: 25 })
-    await page.waitForTimeout(500)
 
     // The "Load earlier messages" button should now be visible
     const loadButton = agentPanel.getByText('Load 10 earlier messages')
@@ -174,7 +174,7 @@ test.describe.serial('Feature: Collapsed History', () => {
       const container = document.querySelector('[data-panel-id="agent"] .overflow-y-auto')
       if (container) container.scrollTop = 0
     })
-    await page.waitForTimeout(300)
+    await expect(agentPanel.getByText('Set up the project structure')).toBeVisible({ timeout: 3000 })
 
     await screenshotElement(page, agentPanel, path.join(SCREENSHOTS, '03-tool-grouping.png'))
     steps.push({
