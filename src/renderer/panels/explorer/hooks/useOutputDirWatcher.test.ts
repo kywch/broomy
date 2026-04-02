@@ -2,7 +2,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook, act, cleanup } from '@testing-library/react'
 import '../../../../test/setup'
-import { useOutputDirWatcher, type OutputDirState } from './useIssuePlanDetection'
+import { useOutputDirWatcher, type OutputDirState } from './useOutputDirWatcher'
 
 afterEach(() => {
   cleanup()
