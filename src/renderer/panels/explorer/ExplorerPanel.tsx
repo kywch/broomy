@@ -38,9 +38,17 @@ export default function Explorer({
   issuePlanExists,
 }: ExplorerProps) {
   const openCmdsEditor = useSessionStore(s => s.openCommandsEditor)
+  const updateReviewStatus = useSessionStore(s => s.updateReviewStatus)
   const handleOpenCommandsEditor = useCallback(() => {
     if (sessionId && directory) openCmdsEditor(sessionId, directory)
   }, [sessionId, directory, openCmdsEditor])
+
+  const handleRefreshReviewStatus = useCallback(() => {
+    if (!session || session.sessionType !== 'review' || !session.prNumber || !sessionId) return
+    void window.gh.myReviewStatus(session.directory, session.prNumber).then((status) => {
+      if (status) updateReviewStatus(sessionId, status)
+    }).catch(() => {/* ignore */})
+  }, [session?.sessionType, session?.prNumber, session?.directory, sessionId, updateReviewStatus])
 
   if (!directory) {
     return (
@@ -129,6 +137,8 @@ export default function Explorer({
               onSwitchTab={(tab) => onFilterChange(tab as Parameters<typeof onFilterChange>[0])}
               onOpenCommandsEditor={handleOpenCommandsEditor}
               isReview={session?.sessionType === 'review'}
+              reviewStatus={session?.reviewStatus}
+              onRefreshReviewStatus={handleRefreshReviewStatus}
             />
           </PanelErrorBoundary>
         )}

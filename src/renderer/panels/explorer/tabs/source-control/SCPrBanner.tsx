@@ -26,6 +26,8 @@ interface SCPrBannerProps {
   onFileSelect?: (target: NavigationTarget) => void
   onRefresh?: () => void
   isRefreshing?: boolean
+  reviewStatus?: 'pending' | 'reviewed'
+  isReview?: boolean
 }
 
 function RefreshButton({ onRefresh, isRefreshing }: { onRefresh: () => void; isRefreshing?: boolean }) {
@@ -54,13 +56,29 @@ function RefreshButton({ onRefresh, isRefreshing }: { onRefresh: () => void; isR
   )
 }
 
+function ReviewStatusChip({ reviewStatus }: { reviewStatus: 'pending' | 'reviewed' }) {
+  if (reviewStatus === 'reviewed') {
+    return (
+      <span className="text-[10px] px-1.5 py-0.5 rounded font-semibold bg-green-500/20 text-green-400 shrink-0">
+        Reviewed
+      </span>
+    )
+  }
+  return (
+    <span className="text-[10px] px-1.5 py-0.5 rounded font-semibold bg-cyan-500/20 text-cyan-400 shrink-0">
+      Review
+    </span>
+  )
+}
+
 function PrStatusContent({
   prStatus, branchStatus, branchBaseName, issueNumber, issueTitle, issueUrl,
-  onFileSelect, onRefresh, isRefreshing,
+  onFileSelect, onRefresh, isRefreshing, reviewStatus, isReview,
 }: Pick<SCPrBannerProps,
   'prStatus' | 'branchStatus' | 'branchBaseName' |
   'issueNumber' | 'issueTitle' | 'issueUrl' |
-  'onFileSelect' | 'onRefresh' | 'isRefreshing'
+  'onFileSelect' | 'onRefresh' | 'isRefreshing' |
+  'reviewStatus' | 'isReview'
 >) {
   const refresh = onRefresh ? <RefreshButton onRefresh={onRefresh} isRefreshing={isRefreshing} /> : null
 
@@ -85,6 +103,7 @@ function PrStatusContent({
           >
             #{prStatus.number}: {prStatus.title}
           </button>
+          {isReview && reviewStatus && <ReviewStatusChip reviewStatus={reviewStatus} />}
           {refresh}
         </div>
       </div>
@@ -133,6 +152,7 @@ export function SCPrBanner({
   gitOpError, onDismissError,
   agentMergeMessage, onDismissAgentMerge, issueNumber, issueTitle, issueUrl,
   onRetryGitOp, onFileSelect, onRefresh, isRefreshing,
+  reviewStatus, isReview,
 }: SCPrBannerProps) {
   const { ghAvailable } = useRepoStore()
   return (
@@ -144,6 +164,7 @@ export function SCPrBanner({
           branchBaseName={branchBaseName}
           issueNumber={issueNumber} issueTitle={issueTitle} issueUrl={issueUrl}
           onFileSelect={onFileSelect} onRefresh={onRefresh} isRefreshing={isRefreshing || isPrLoading}
+          reviewStatus={reviewStatus} isReview={isReview}
         />
       </div>
 

@@ -26,6 +26,7 @@ interface AppCallbacksDeps {
   updateLayoutSize: (id: string, key: keyof LayoutSizes, value: number) => void
   setFileViewerPosition: (id: string, position: 'top' | 'left') => void
   updatePrState: (sessionId: string, prState: PrState, prNumber?: number, prUrl?: string) => void
+  updateReviewStatus: (sessionId: string, reviewStatus: 'pending' | 'reviewed') => void
   setShowNewSessionDialog: (show: boolean) => void
   onSessionAlreadyExists?: (info: { name: string; wasArchived: boolean }) => void
   onError: (msg: string) => void
@@ -46,6 +47,7 @@ export function useAppCallbacks({
   updateLayoutSize,
   setFileViewerPosition,
   updatePrState,
+  updateReviewStatus,
   setShowNewSessionDialog,
   onSessionAlreadyExists,
   onError,
@@ -83,8 +85,15 @@ export function useAppCallbacks({
       } else {
         updatePrState(session.id, null)
       }
+      // Also refresh review status for review sessions
+      if (session.sessionType === 'review' && session.prNumber) {
+        const reviewStatus = await window.gh.myReviewStatus(session.directory, session.prNumber).catch(() => null)
+        if (reviewStatus) {
+          updateReviewStatus(session.id, reviewStatus)
+        }
+      }
     }))
-  }, [sessions, updatePrState])
+  }, [sessions, updatePrState, updateReviewStatus])
 
   const getAgentCommand = useCallback((session: Session) => {
     if (!session.agentId) return undefined
