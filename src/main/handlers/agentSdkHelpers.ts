@@ -84,12 +84,42 @@ export async function handleLoadHistory(
     const { getSessionMessages } = await import('@anthropic-ai/claude-agent-sdk')
     const allMessages = await getSessionMessages(sdkSessionId)
 
-    const maxMessages = limit ?? 10
-    const history = allMessages.length > maxMessages
-      ? allMessages.slice(allMessages.length - maxMessages)
-      : allMessages
+    const maxVisibleItems = limit ?? 50
 
-    if (allMessages.length > maxMessages) {
+    // Count "visible items" rather than raw messages.  Tool-use blocks from
+    // the same assistant turn all collapse into a single rendered line, so
+    // they should count as one item toward the limit.
+    let visibleCount = 0
+    let cutIndex = 0 // index in allMessages where the visible portion starts
+    let prevWasToolUse = false
+    for (let i = allMessages.length - 1; i >= 0; i--) {
+      const entry = allMessages[i] as Record<string, unknown>
+      const entryType = entry.type as string
+      const message = entry.message as Record<string, unknown> | undefined
+      const content = message?.content as Record<string, unknown>[] | string | undefined
+
+      // Determine if this entry is purely tool_use blocks
+      const isToolUse = entryType === 'assistant'
+        && Array.isArray(content)
+        && content.length > 0
+        && content.every((b) => (b as Record<string, unknown>).type === 'tool_use')
+
+      if (isToolUse && prevWasToolUse) {
+        // Consecutive tool_use entries collapse together — don't increment
+      } else {
+        visibleCount++
+      }
+      prevWasToolUse = isToolUse
+
+      if (visibleCount > maxVisibleItems) {
+        cutIndex = i + 1
+        break
+      }
+    }
+
+    const history = cutIndex > 0 ? allMessages.slice(cutIndex) : allMessages
+
+    if (cutIndex > 0) {
       senderWindow.webContents.send(`agentSdk:historyMeta:${sessionId}`, {
         total: allMessages.length,
         loaded: history.length,
