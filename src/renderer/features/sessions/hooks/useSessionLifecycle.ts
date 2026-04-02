@@ -8,6 +8,7 @@ import { terminalBufferRegistry } from '../../../shared/utils/terminalBufferRegi
 import { scrollLogRegistry } from '../../../panels/agent/utils/scrollLog'
 import { loadMonacoProjectContext } from '../../../shared/utils/monacoProjectContext'
 import { restoreSessionFocus } from '../../../shared/utils/focusHelpers'
+import { fetchReviewStatus } from '../../../shared/utils/reviewStatus'
 
 export function useSessionLifecycle({
   activeSession,
@@ -100,14 +101,10 @@ export function useSessionLifecycle({
 
   // Check review status when switching to a review session
   useEffect(() => {
-    if (activeSession?.sessionType !== 'review' || !activeSession.prNumber) return
-
+    if (!activeSession) return
     let cancelled = false
-    void window.gh.myReviewStatus(activeSession.directory, activeSession.prNumber).then((status) => {
-      if (cancelled || !status) return
-      updateReviewStatus(activeSession.id, status)
-    }).catch(() => {
-      // Ignore errors
+    void fetchReviewStatus(activeSession, (id, status) => {
+      if (!cancelled) updateReviewStatus(id, status)
     })
     return () => { cancelled = true }
   }, [activeSessionId])

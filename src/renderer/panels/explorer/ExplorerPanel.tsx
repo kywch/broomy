@@ -13,6 +13,7 @@ import { IssuePlanChip } from './IssuePlanChip'
 import { focusSearchInput } from '../../shared/utils/focusHelpers'
 import PanelErrorBoundary from '../../shared/components/PanelErrorBoundary'
 import { useSessionStore } from '../../store/sessions'
+import { fetchReviewStatus } from '../../shared/utils/reviewStatus'
 
 export default function Explorer({
   directory,
@@ -44,11 +45,9 @@ export default function Explorer({
   }, [sessionId, directory, openCmdsEditor])
 
   const handleRefreshReviewStatus = useCallback(() => {
-    if (!session || session.sessionType !== 'review' || !session.prNumber || !sessionId) return
-    void window.gh.myReviewStatus(session.directory, session.prNumber).then((status) => {
-      if (status) updateReviewStatus(sessionId, status)
-    }).catch(() => {/* ignore */})
-  }, [session?.sessionType, session?.prNumber, session?.directory, sessionId, updateReviewStatus])
+    if (!session) return
+    void fetchReviewStatus(session, updateReviewStatus)
+  }, [session?.sessionType, session?.prNumber, session?.directory, session?.id, updateReviewStatus])
 
   if (!directory) {
     return (

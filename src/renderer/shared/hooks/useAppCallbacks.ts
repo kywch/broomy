@@ -8,6 +8,7 @@ import type { AgentConfig } from '../../store/agents'
 import type { PrState } from '../../features/git/branchStatus'
 import type { DuplicateSessionResult } from '../../store/sessionCoreActions'
 import { restoreSessionFocus } from '../utils/focusHelpers'
+import { fetchReviewStatus } from '../utils/reviewStatus'
 import { useBackgroundInit } from '../../panels/settings/useBackgroundInit'
 
 
@@ -85,13 +86,7 @@ export function useAppCallbacks({
       } else {
         updatePrState(session.id, null)
       }
-      // Also refresh review status for review sessions
-      if (session.sessionType === 'review' && session.prNumber) {
-        const reviewStatus = await window.gh.myReviewStatus(session.directory, session.prNumber).catch(() => null)
-        if (reviewStatus) {
-          updateReviewStatus(session.id, reviewStatus)
-        }
-      }
+      await fetchReviewStatus(session, updateReviewStatus)
     }))
   }, [sessions, updatePrState, updateReviewStatus])
 
