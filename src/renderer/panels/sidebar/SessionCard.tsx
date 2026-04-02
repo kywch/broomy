@@ -8,7 +8,7 @@
 import { memo, useEffect, useState } from 'react'
 import { useSessionStore } from '../../store/sessions'
 import { useShallow } from 'zustand/react/shallow'
-import type { SessionStatus, BranchStatus } from '../../store/sessions'
+import type { SessionStatus, StatusChip } from '../../store/sessions'
 import { formatElapsedTime } from '../../shared/utils/formatTime'
 import { useElapsedSeconds } from '../../shared/hooks/useElapsedSeconds'
 import { branchStatusBadge } from '../../features/git/explorerHelpers'
@@ -70,7 +70,7 @@ function StatusIndicator({ status, isUnread }: { status: SessionStatus; isUnread
   return <span className="w-2 h-2 rounded-full bg-status-idle" />
 }
 
-function BranchStatusChip({ status }: { status: BranchStatus }) {
+function StatusChipBadge({ status }: { status: StatusChip }) {
   if (status === 'in-progress') return null
   const { label, classes } = branchStatusBadge[status]
   return (
@@ -103,8 +103,9 @@ export default memo(function SessionCard({
         branch: sess.branch,
         name: sess.name,
         lastMessage: sess.lastMessage,
-        branchStatus: sess.branchStatus,
+        statusChip: sess.statusChip,
         prNumber: sess.prNumber,
+        lastKnownPrNumber: sess.lastKnownPrNumber,
         isArchived: sess.isArchived,
         sessionType: sess.sessionType,
         reviewStatus: sess.reviewStatus,
@@ -217,10 +218,10 @@ export default memo(function SessionCard({
         {session.sessionType === 'review' ? (
           <ReviewStatusChip status={session.reviewStatus ?? 'pending'} />
         ) : (
-          <BranchStatusChip status={session.branchStatus} />
+          <StatusChipBadge status={session.statusChip} />
         )}
-        {session.prNumber && (
-          <span className="text-purple-400 flex-shrink-0">PR #{session.prNumber}</span>
+        {(session.prNumber || session.lastKnownPrNumber) && (
+          <span className="text-purple-400 flex-shrink-0">PR #{session.prNumber || session.lastKnownPrNumber}</span>
         )}
       </div>
       {session.initError ? (

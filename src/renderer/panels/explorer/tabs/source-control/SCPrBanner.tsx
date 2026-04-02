@@ -2,7 +2,7 @@
  * Banner component showing pull request status and merge conflict alerts.
  */
 import type { GitHubPrStatus } from '../../../../../preload/index'
-import type { BranchStatus } from '../../../../store/sessions'
+import type { BranchStatus, StatusChip } from '../../../../store/sessions'
 import type { NavigationTarget } from '../../../../shared/utils/fileNavigation'
 import { branchStatusBadge } from '../../../../features/git/explorerHelpers'
 import { DialogErrorBanner } from '../../../../shared/components/ErrorBanner'
@@ -15,6 +15,7 @@ interface SCPrBannerProps {
   prStatus: GitHubPrStatus
   isPrLoading: boolean
   branchStatus?: BranchStatus
+  statusChip?: StatusChip
   branchBaseName: string
   gitOpError: { operation: string; message: string } | null
   onDismissError: () => void
@@ -58,21 +59,23 @@ function RefreshButton({ onRefresh, isRefreshing }: { onRefresh: () => void; isR
 }
 
 function PrStatusContent({
-  prStatus, branchStatus, branchBaseName, issueNumber, issueTitle, issueUrl,
+  prStatus, branchStatus, statusChip, branchBaseName, issueNumber, issueTitle, issueUrl,
   onFileSelect, onRefresh, isRefreshing, reviewStatus, isReview,
 }: Pick<SCPrBannerProps,
-  'prStatus' | 'branchStatus' | 'branchBaseName' |
+  'prStatus' | 'branchStatus' | 'statusChip' | 'branchBaseName' |
   'issueNumber' | 'issueTitle' | 'issueUrl' |
   'onFileSelect' | 'onRefresh' | 'isRefreshing' |
   'reviewStatus' | 'isReview'
 >) {
   const refresh = onRefresh ? <RefreshButton onRefresh={onRefresh} isRefreshing={isRefreshing} /> : null
 
-  // Use branchStatus as the single source of truth for the badge so it always
-  // matches the sidebar chip. PR metadata (link, title) enriches the display.
-  const badge = branchStatus ? branchStatusBadge[branchStatus] : undefined
+  // Use statusChip (which accounts for feedback/failed) as the single source of truth
+  // for the badge, falling back to branchStatus for backwards compat.
+  const chipKey = statusChip ?? branchStatus
+  const badge = chipKey ? branchStatusBadge[chipKey] : undefined
   const hasPrMetadata = prStatus?.number && prStatus.url
   const isPrRelated = branchStatus === 'open' || branchStatus === 'merged' || branchStatus === 'closed'
+    || statusChip === 'feedback' || statusChip === 'failed'
 
   if (hasPrMetadata && isPrRelated && badge) {
     return (
@@ -134,7 +137,7 @@ function PrStatusContent({
 }
 
 export function SCPrBanner({
-  prStatus, isPrLoading, branchStatus, branchBaseName,
+  prStatus, isPrLoading, branchStatus, statusChip, branchBaseName,
   gitOpError, onDismissError,
   agentMergeMessage, onDismissAgentMerge, issueNumber, issueTitle, issueUrl,
   onRetryGitOp, onFileSelect, onRefresh, isRefreshing,
@@ -146,7 +149,7 @@ export function SCPrBanner({
       {/* PR Status banner */}
       <div className="px-3 py-2 border-b border-border bg-bg-secondary">
         <PrStatusContent
-          prStatus={prStatus} branchStatus={branchStatus}
+          prStatus={prStatus} branchStatus={branchStatus} statusChip={statusChip}
           branchBaseName={branchBaseName}
           issueNumber={issueNumber} issueTitle={issueTitle} issueUrl={issueUrl}
           onFileSelect={onFileSelect} onRefresh={onRefresh} isRefreshing={isRefreshing || isPrLoading}
