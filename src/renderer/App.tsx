@@ -25,6 +25,7 @@ import ErrorDetailModal from './shared/components/ErrorDetailModal'
 import { useGitPolling } from './features/git/hooks/useGitPolling'
 import { useFileNavigation } from './panels/fileViewer/hooks/useFileNavigation'
 import { useSessionLifecycle } from './features/sessions/hooks/useSessionLifecycle'
+import { useAgentChatStore } from './store/agentChat'
 import { useAppCallbacks } from './shared/hooks/useAppCallbacks'
 import { usePanelsMap } from './hooks/usePanelsMap'
 import { useHelpMenu } from './shared/hooks/useHelpMenu'
@@ -378,6 +379,7 @@ function App() {
     (window as unknown as Record<string, unknown>).__sessionStore = useSessionStore
     ;(window as unknown as Record<string, unknown>).__updateStore = useUpdateStore
     ;(window as unknown as Record<string, unknown>).__repoStore = useRepoStore
+    ;(window as unknown as Record<string, unknown>).__agentChatStore = useAgentChatStore
   }, [])
 
   return (
