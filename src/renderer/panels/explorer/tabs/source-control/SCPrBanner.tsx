@@ -4,35 +4,12 @@
 import type { GitHubPrStatus } from '../../../../../preload/index'
 import type { BranchStatus, StatusChip } from '../../../../store/sessions'
 import type { NavigationTarget } from '../../../../shared/utils/fileNavigation'
+import { branchStatusBadge } from '../../../../features/git/explorerHelpers'
 import { DialogErrorBanner } from '../../../../shared/components/ErrorBanner'
 import { useRepoStore } from '../../../../store/repos'
 import { AuthSetupSection, isAuthError } from '../../../../shared/components/AuthSetupSection'
 import { isGitConfigError } from '../../../../shared/components/GitIdentitySetup'
 import { ReviewStatusChip } from '../../../../shared/components/ReviewStatusChip'
-
-/** CSS classes for the status chip badge in the SCM banner. */
-function statusChipBadgeClass(chip: StatusChip): string {
-  switch (chip) {
-    case 'open': return 'bg-green-500/20 text-green-400'
-    case 'feedback': return 'bg-orange-500/20 text-orange-400'
-    case 'failed': return 'bg-red-500/20 text-red-400'
-    case 'merged': return 'bg-purple-500/20 text-purple-400'
-    case 'closed': return 'bg-red-500/20 text-red-400'
-    default: return 'bg-green-500/20 text-green-400'
-  }
-}
-
-/** Display label for the status chip badge. */
-function statusChipLabel(chip: StatusChip): string {
-  switch (chip) {
-    case 'open': return 'OPEN'
-    case 'feedback': return 'FEEDBACK'
-    case 'failed': return 'FAILED'
-    case 'merged': return 'MERGED'
-    case 'closed': return 'CLOSED'
-    default: return chip.toUpperCase()
-  }
-}
 
 interface SCPrBannerProps {
   prStatus: GitHubPrStatus
@@ -92,20 +69,20 @@ function PrStatusContent({
 >) {
   const refresh = onRefresh ? <RefreshButton onRefresh={onRefresh} isRefreshing={isRefreshing} /> : null
 
-  // Determine whether to show PR info (hide stale MERGED/CLOSED when branch has moved on)
-  const showPr = prStatus?.number && prStatus.url && !(
-    (prStatus.state === 'MERGED' || prStatus.state === 'CLOSED') &&
-    (branchStatus === 'in-progress' || branchStatus === 'pushed')
-  )
+  // Use statusChip (which accounts for feedback/failed) as the single source of truth
+  // for the badge, falling back to branchStatus for backwards compat.
+  const chipKey = statusChip ?? branchStatus
+  const badge = chipKey ? branchStatusBadge[chipKey] : undefined
+  const hasPrMetadata = prStatus?.number && prStatus.url
+  const isPrRelated = branchStatus === 'open' || branchStatus === 'merged' || branchStatus === 'closed'
+    || statusChip === 'feedback' || statusChip === 'failed'
 
-  if (showPr) {
-    // Use statusChip for the badge (single source of truth), falling back to PR state
-    const chip = statusChip ?? (prStatus.state === 'OPEN' ? 'open' : prStatus.state === 'MERGED' ? 'merged' : 'closed')
+  if (hasPrMetadata && isPrRelated && badge) {
     return (
       <div className="flex flex-col gap-1">
         <div className="flex items-center gap-2">
-          <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${statusChipBadgeClass(chip)}`}>
-            {statusChipLabel(chip)}
+          <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${badge.classes}`}>
+            {badge.label}
           </span>
           <button
             onClick={() => onFileSelect

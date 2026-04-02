@@ -11,6 +11,7 @@ import { useShallow } from 'zustand/react/shallow'
 import type { SessionStatus, StatusChip } from '../../store/sessions'
 import { formatElapsedTime } from '../../shared/utils/formatTime'
 import { useElapsedSeconds } from '../../shared/hooks/useElapsedSeconds'
+import { branchStatusBadge } from '../../features/git/explorerHelpers'
 import { ReviewStatusChip } from '../../shared/components/ReviewStatusChip'
 
 const statusLabels: Record<SessionStatus, string> = {
@@ -71,18 +72,7 @@ function StatusIndicator({ status, isUnread }: { status: SessionStatus; isUnread
 
 function StatusChipBadge({ status }: { status: StatusChip }) {
   if (status === 'in-progress') return null
-
-  const config: Record<string, { label: string; classes: string }> = {
-    pushed: { label: 'PUSHED', classes: 'bg-blue-500/20 text-blue-400' },
-    empty: { label: 'EMPTY', classes: 'bg-gray-500/20 text-gray-400' },
-    open: { label: 'PR OPEN', classes: 'bg-green-500/20 text-green-400' },
-    feedback: { label: 'FEEDBACK', classes: 'bg-orange-500/20 text-orange-400' },
-    failed: { label: 'FAILED', classes: 'bg-red-500/20 text-red-400' },
-    merged: { label: 'MERGED', classes: 'bg-purple-500/20 text-purple-400' },
-    closed: { label: 'CLOSED', classes: 'bg-red-500/20 text-red-400' },
-  }
-
-  const { label, classes } = config[status]
+  const { label, classes } = branchStatusBadge[status]
   return (
     <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium leading-none ${classes}`}>
       {label}
