@@ -236,7 +236,7 @@ function AppContent() {
   } = useAppCallbacks({
     sessions, activeSessionId, agents, repos, addSession, addInitializingSession,
     finalizeSession, failSession, removeSession, setActiveSession,
-    togglePanel, updateLayoutSize, setFileViewerPosition, updatePrState,
+    togglePanel, updateLayoutSize, setFileViewerPosition, updatePrState, updateReviewStatus,
     setShowNewSessionDialog, onSessionAlreadyExists: setDuplicateSessionInfo, onError: setAppError,
   })
 

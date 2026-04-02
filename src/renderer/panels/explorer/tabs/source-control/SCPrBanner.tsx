@@ -4,11 +4,12 @@
 import type { GitHubPrStatus } from '../../../../../preload/index'
 import type { BranchStatus } from '../../../../store/sessions'
 import type { NavigationTarget } from '../../../../shared/utils/fileNavigation'
-import { prStateBadgeClass } from '../../../../features/git/explorerHelpers'
+import { branchStatusBadge } from '../../../../features/git/explorerHelpers'
 import { DialogErrorBanner } from '../../../../shared/components/ErrorBanner'
 import { useRepoStore } from '../../../../store/repos'
 import { AuthSetupSection, isAuthError } from '../../../../shared/components/AuthSetupSection'
 import { isGitConfigError } from '../../../../shared/components/GitIdentitySetup'
+import { ReviewStatusChip } from '../../../../shared/components/ReviewStatusChip'
 
 interface SCPrBannerProps {
   prStatus: GitHubPrStatus
@@ -26,6 +27,8 @@ interface SCPrBannerProps {
   onFileSelect?: (target: NavigationTarget) => void
   onRefresh?: () => void
   isRefreshing?: boolean
+  reviewStatus?: 'pending' | 'reviewed'
+  isReview?: boolean
 }
 
 function RefreshButton({ onRefresh, isRefreshing }: { onRefresh: () => void; isRefreshing?: boolean }) {
@@ -56,26 +59,27 @@ function RefreshButton({ onRefresh, isRefreshing }: { onRefresh: () => void; isR
 
 function PrStatusContent({
   prStatus, branchStatus, branchBaseName, issueNumber, issueTitle, issueUrl,
-  onFileSelect, onRefresh, isRefreshing,
+  onFileSelect, onRefresh, isRefreshing, reviewStatus, isReview,
 }: Pick<SCPrBannerProps,
   'prStatus' | 'branchStatus' | 'branchBaseName' |
   'issueNumber' | 'issueTitle' | 'issueUrl' |
-  'onFileSelect' | 'onRefresh' | 'isRefreshing'
+  'onFileSelect' | 'onRefresh' | 'isRefreshing' |
+  'reviewStatus' | 'isReview'
 >) {
   const refresh = onRefresh ? <RefreshButton onRefresh={onRefresh} isRefreshing={isRefreshing} /> : null
 
-  // Determine whether to show PR info (hide stale MERGED/CLOSED when branch has moved on)
-  const showPr = prStatus?.number && prStatus.url && !(
-    (prStatus.state === 'MERGED' || prStatus.state === 'CLOSED') &&
-    (branchStatus === 'in-progress' || branchStatus === 'pushed')
-  )
+  // Use branchStatus as the single source of truth for the badge so it always
+  // matches the sidebar chip. PR metadata (link, title) enriches the display.
+  const badge = branchStatus ? branchStatusBadge[branchStatus] : undefined
+  const hasPrMetadata = prStatus?.number && prStatus.url
+  const isPrRelated = branchStatus === 'open' || branchStatus === 'merged' || branchStatus === 'closed'
 
-  if (showPr) {
+  if (hasPrMetadata && isPrRelated && badge) {
     return (
       <div className="flex flex-col gap-1">
         <div className="flex items-center gap-2">
-          <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${prStateBadgeClass(prStatus.state)}`}>
-            {prStatus.state}
+          <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${badge.classes}`}>
+            {badge.label}
           </span>
           <button
             onClick={() => onFileSelect
@@ -85,6 +89,7 @@ function PrStatusContent({
           >
             #{prStatus.number}: {prStatus.title}
           </button>
+          {isReview && reviewStatus && <ReviewStatusChip status={reviewStatus} />}
           {refresh}
         </div>
       </div>
@@ -133,6 +138,7 @@ export function SCPrBanner({
   gitOpError, onDismissError,
   agentMergeMessage, onDismissAgentMerge, issueNumber, issueTitle, issueUrl,
   onRetryGitOp, onFileSelect, onRefresh, isRefreshing,
+  reviewStatus, isReview,
 }: SCPrBannerProps) {
   const { ghAvailable } = useRepoStore()
   return (
@@ -144,6 +150,7 @@ export function SCPrBanner({
           branchBaseName={branchBaseName}
           issueNumber={issueNumber} issueTitle={issueTitle} issueUrl={issueUrl}
           onFileSelect={onFileSelect} onRefresh={onRefresh} isRefreshing={isRefreshing || isPrLoading}
+          reviewStatus={reviewStatus} isReview={isReview}
         />
       </div>
 

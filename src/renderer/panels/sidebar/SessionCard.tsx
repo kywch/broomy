@@ -11,6 +11,8 @@ import { useShallow } from 'zustand/react/shallow'
 import type { SessionStatus, BranchStatus } from '../../store/sessions'
 import { formatElapsedTime } from '../../shared/utils/formatTime'
 import { useElapsedSeconds } from '../../shared/hooks/useElapsedSeconds'
+import { branchStatusBadge } from '../../features/git/explorerHelpers'
+import { ReviewStatusChip } from '../../shared/components/ReviewStatusChip'
 
 const statusLabels: Record<SessionStatus, string> = {
   working: 'Working',
@@ -70,16 +72,7 @@ function StatusIndicator({ status, isUnread }: { status: SessionStatus; isUnread
 
 function BranchStatusChip({ status }: { status: BranchStatus }) {
   if (status === 'in-progress') return null
-
-  const config: Record<string, { label: string; classes: string }> = {
-    pushed: { label: 'PUSHED', classes: 'bg-blue-500/20 text-blue-400' },
-    empty: { label: 'EMPTY', classes: 'bg-gray-500/20 text-gray-400' },
-    open: { label: 'PR OPEN', classes: 'bg-green-500/20 text-green-400' },
-    merged: { label: 'MERGED', classes: 'bg-purple-500/20 text-purple-400' },
-    closed: { label: 'CLOSED', classes: 'bg-red-500/20 text-red-400' },
-  }
-
-  const { label, classes } = config[status]
+  const { label, classes } = branchStatusBadge[status]
   return (
     <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium leading-none ${classes}`}>
       {label}
@@ -222,15 +215,7 @@ export default memo(function SessionCard({
       <div className="flex items-center gap-2 text-xs text-text-secondary">
         <span className="truncate flex-1">{session.name}</span>
         {session.sessionType === 'review' ? (
-          session.reviewStatus === 'reviewed' ? (
-            <span className="px-1.5 py-0.5 text-[10px] font-semibold rounded bg-green-500/20 text-green-400 flex-shrink-0">
-              Reviewed
-            </span>
-          ) : (
-            <span className="px-1.5 py-0.5 text-[10px] font-semibold rounded bg-cyan-500/20 text-cyan-400 flex-shrink-0">
-              Review
-            </span>
-          )
+          <ReviewStatusChip status={session.reviewStatus ?? 'pending'} />
         ) : (
           <BranchStatusChip status={session.branchStatus} />
         )}
