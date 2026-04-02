@@ -8,6 +8,7 @@ import type { AgentConfig } from '../../store/agents'
 import type { PrState } from '../../features/git/branchStatus'
 import type { DuplicateSessionResult } from '../../store/sessionCoreActions'
 import { restoreSessionFocus } from '../utils/focusHelpers'
+import { fetchReviewStatus } from '../utils/reviewStatus'
 import { useBackgroundInit } from '../../panels/settings/useBackgroundInit'
 
 
@@ -26,6 +27,7 @@ interface AppCallbacksDeps {
   updateLayoutSize: (id: string, key: keyof LayoutSizes, value: number) => void
   setFileViewerPosition: (id: string, position: 'top' | 'left') => void
   updatePrState: (sessionId: string, prState: PrState, prNumber?: number, prUrl?: string) => void
+  updateReviewStatus: (sessionId: string, reviewStatus: 'pending' | 'reviewed') => void
   setShowNewSessionDialog: (show: boolean) => void
   onSessionAlreadyExists?: (info: { name: string; wasArchived: boolean }) => void
   onError: (msg: string) => void
@@ -46,6 +48,7 @@ export function useAppCallbacks({
   updateLayoutSize,
   setFileViewerPosition,
   updatePrState,
+  updateReviewStatus,
   setShowNewSessionDialog,
   onSessionAlreadyExists,
   onError,
@@ -83,8 +86,9 @@ export function useAppCallbacks({
       } else {
         updatePrState(session.id, null)
       }
+      await fetchReviewStatus(session, updateReviewStatus)
     }))
-  }, [sessions, updatePrState])
+  }, [sessions, updatePrState, updateReviewStatus])
 
   const getAgentCommand = useCallback((session: Session) => {
     if (!session.agentId) return undefined

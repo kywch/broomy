@@ -12,6 +12,7 @@ import type { SessionStatus, BranchStatus } from '../../store/sessions'
 import { formatElapsedTime } from '../../shared/utils/formatTime'
 import { useElapsedSeconds } from '../../shared/hooks/useElapsedSeconds'
 import { branchStatusBadge } from '../../features/git/explorerHelpers'
+import { ReviewStatusChip } from '../../shared/components/ReviewStatusChip'
 
 const statusLabels: Record<SessionStatus, string> = {
   working: 'Working',
@@ -214,15 +215,7 @@ export default memo(function SessionCard({
       <div className="flex items-center gap-2 text-xs text-text-secondary">
         <span className="truncate flex-1">{session.name}</span>
         {session.sessionType === 'review' ? (
-          session.reviewStatus === 'reviewed' ? (
-            <span className="px-1.5 py-0.5 text-[10px] font-semibold rounded bg-green-500/20 text-green-400 flex-shrink-0">
-              Reviewed
-            </span>
-          ) : (
-            <span className="px-1.5 py-0.5 text-[10px] font-semibold rounded bg-cyan-500/20 text-cyan-400 flex-shrink-0">
-              Review
-            </span>
-          )
+          <ReviewStatusChip status={session.reviewStatus ?? 'pending'} />
         ) : (
           <BranchStatusChip status={session.branchStatus} />
         )}
