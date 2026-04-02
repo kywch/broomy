@@ -4,8 +4,10 @@
  * Implements a priority-based rule chain that maps a combination of local git
  * state (uncommitted files, ahead count, tracking branch, merge status) and
  * persisted PR state into one of six statuses: in-progress, pushed, empty, open,
- * merged, or closed. The `hasHadCommits` sticky flag distinguishes genuinely
- * merged branches from fresh/empty ones that have zero commits ahead of main.
+ * merged, or closed. Persisted PR state is checked before the empty-branch
+ * heuristic so that a known merged/closed/open PR is never misclassified when
+ * the `hasHadCommits` sticky flag was missed (e.g. session was inactive during
+ * the commit-and-merge cycle).
  */
 export type BranchStatus = 'in-progress' | 'pushed' | 'empty' | 'open' | 'merged' | 'closed'
 
@@ -50,22 +52,23 @@ export function computeBranchStatus(input: BranchStatusInput): BranchStatus {
     return 'merged'
   }
 
-  // 3b. Fresh branch with tracking: isMergedToMain is true because there are 0 commits
+  // 4. Check persisted PR state (before empty-branch check so that a merged PR
+  //    is never misclassified as "empty" when hasHadCommits was missed)
+  if (lastKnownPrState === 'MERGED') return 'merged'
+  if (lastKnownPrState === 'CLOSED') return 'closed'
+  if (lastKnownPrState === 'OPEN') return 'open'
+
+  // 5. Fresh branch with tracking: isMergedToMain is true because there are 0 commits
   // ahead of main, but there were never any commits — this is an empty/fresh branch.
   if (isMergedToMain && !hasHadCommits && hasTrackingBranch) {
     return 'empty'
   }
 
-  // 4. Check persisted PR state
-  if (lastKnownPrState === 'MERGED') return 'merged'
-  if (lastKnownPrState === 'CLOSED') return 'closed'
-  if (lastKnownPrState === 'OPEN') return 'open'
-
-  // 5. Has remote tracking branch, no PR -> pushed
+  // 6. Has remote tracking branch, no PR -> pushed
   if (hasTrackingBranch) {
     return 'pushed'
   }
 
-  // 6. Default
+  // 7. Default
   return 'in-progress'
 }
