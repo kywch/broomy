@@ -63,6 +63,7 @@ function AgentChatInner({ sessionId, cwd, sdkSessionId, skipApproval, env, model
   // sets it back to true, defeating the purpose.
   const shouldAutoScrollRef = useRef(true)
   const prevMessageCountRef = useRef(0)
+  const [showScrollButton, setShowScrollButton] = useState(false)
 
   const [model, setModel] = useState(modelProp ?? DEFAULT_MODEL)
   const [effort, setEffort] = useState(effortProp ?? '')
@@ -93,12 +94,30 @@ function AgentChatInner({ sessionId, cwd, sdkSessionId, skipApproval, env, model
     effort: (effort || undefined) as 'low' | 'medium' | 'high' | 'max' | undefined,
   })
 
+  const isNearBottom = useCallback((el: HTMLElement) => {
+    return el.scrollHeight - el.scrollTop - el.clientHeight < 80
+  }, [])
+
+  const handleScrollToBottom = useCallback(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    shouldAutoScrollRef.current = true
+    setShowScrollButton(false)
+  }, [])
+
+  const handleScroll = useCallback(() => {
+    const el = scrollContainerRef.current
+    if (!el) return
+    const atBottom = isNearBottom(el)
+    shouldAutoScrollRef.current = atBottom
+    setShowScrollButton(!atBottom)
+  }, [isNearBottom])
+
   // Before new messages render, snapshot whether we're at the bottom
   const messageCount = messages.length
   if (messageCount !== prevMessageCountRef.current) {
     const el = scrollContainerRef.current
     if (el) {
-      shouldAutoScrollRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80
+      shouldAutoScrollRef.current = isNearBottom(el)
     }
     prevMessageCountRef.current = messageCount
   }
@@ -146,7 +165,8 @@ function AgentChatInner({ sessionId, cwd, sdkSessionId, skipApproval, env, model
       {/* Messages area */}
       <div
         ref={scrollContainerRef}
-        className="flex-1 overflow-y-auto px-4 py-3"
+        onScroll={handleScroll}
+        className="relative flex-1 overflow-y-auto px-4 py-3"
       >
         {messages.length === 0 && !isRunning && <EmptyState hasSdkSession={hasSdkSession} />}
 
@@ -270,6 +290,14 @@ function AgentChatInner({ sessionId, cwd, sdkSessionId, skipApproval, env, model
         )}
 
         <div ref={messagesEndRef} />
+        {showScrollButton && (
+          <button
+            onClick={handleScrollToBottom}
+            className="sticky bottom-4 left-1/2 -translate-x-1/2 px-4 py-1.5 text-xs font-medium rounded-full bg-accent text-white hover:bg-accent/80 shadow-lg transition-colors z-10"
+          >
+            Go to End &#x2193;
+          </button>
+        )}
       </div>
 
       {/* Input area */}
