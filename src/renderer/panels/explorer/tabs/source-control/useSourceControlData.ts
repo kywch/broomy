@@ -70,11 +70,9 @@ function usePrEffects(config: PrEffectsConfig) {
             window.gh.prChecksStatus(directory).catch(() => 'none' as const),
             window.gh.prFeedbackStatus(directory, prResult.number).catch(() => false),
           ])
-          if (!cancelled) {
-            setChecksStatus(checks)
-            onUpdateChecksStatus?.(checks)
-            onUpdateFeedbackStatus?.(feedback)
-          }
+          setChecksStatus(checks)
+          onUpdateChecksStatus?.(checks)
+          onUpdateFeedbackStatus?.(feedback)
         } else {
           setChecksStatus('none')
           onUpdateChecksStatus?.('none')

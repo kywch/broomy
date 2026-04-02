@@ -49,12 +49,12 @@ async function fetchPrFeedbackStatus(repoDir: string, prNumber: number): Promise
       // Review comments (inline code comments)
       execFileAsync('gh', [
         'api', `repos/${slug}/pulls/${prNumber}/comments`, '--jq',
-        '[.[] | select(.user.login != "' + login + '") | .created_at]',
+        `[.[] | select(.user.login != "${login}") | .created_at]`,
       ], { cwd: dir, encoding: 'utf-8', timeout: 15000 }),
       // Issue comments (top-level PR comments)
       execFileAsync('gh', [
         'api', `repos/${slug}/issues/${prNumber}/comments`, '--jq',
-        '[.[] | select(.user.login != "' + login + '") | .created_at]',
+        `[.[] | select(.user.login != "${login}") | .created_at]`,
       ], { cwd: dir, encoding: 'utf-8', timeout: 15000 }),
     ])
 
