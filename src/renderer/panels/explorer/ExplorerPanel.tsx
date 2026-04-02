@@ -14,6 +14,7 @@ import { GitignoreChip } from './GitignoreChip'
 import { focusSearchInput } from '../../shared/utils/focusHelpers'
 import PanelErrorBoundary from '../../shared/components/PanelErrorBoundary'
 import { useSessionStore } from '../../store/sessions'
+import { fetchReviewStatus } from '../../shared/utils/reviewStatus'
 
 export default function Explorer({
   directory,
@@ -41,9 +42,15 @@ export default function Explorer({
   onDismissGitignore,
 }: ExplorerProps) {
   const openCmdsEditor = useSessionStore(s => s.openCommandsEditor)
+  const updateReviewStatus = useSessionStore(s => s.updateReviewStatus)
   const handleOpenCommandsEditor = useCallback(() => {
     if (sessionId && directory) openCmdsEditor(sessionId, directory)
   }, [sessionId, directory, openCmdsEditor])
+
+  const handleRefreshReviewStatus = useCallback(() => {
+    if (!session) return
+    void fetchReviewStatus(session, updateReviewStatus)
+  }, [session?.sessionType, session?.prNumber, session?.directory, session?.id, updateReviewStatus])
 
   if (!directory) {
     return (
@@ -139,6 +146,8 @@ export default function Explorer({
               onSwitchTab={(tab) => onFilterChange(tab as Parameters<typeof onFilterChange>[0])}
               onOpenCommandsEditor={handleOpenCommandsEditor}
               isReview={session?.sessionType === 'review'}
+              reviewStatus={session?.reviewStatus}
+              onRefreshReviewStatus={handleRefreshReviewStatus}
             />
           </PanelErrorBoundary>
         )}
