@@ -15,6 +15,7 @@ import { useSdkModels, DEFAULT_MODEL } from '../../shared/hooks/useSdkModels'
 import { formatElapsedTime } from '../../shared/utils/formatTime'
 import { useElapsedSeconds } from '../../shared/hooks/useElapsedSeconds'
 import { useAgentSdk } from './hooks/useAgentSdk'
+import { useAutoScroll } from './hooks/useAutoScroll'
 
 interface AgentChatProps {
   sessionId: string
@@ -55,14 +56,7 @@ function agentStatusLabel(messages: AgentSdkMessage[], state: string): string {
 }
 
 function AgentChatInner({ sessionId, cwd, sdkSessionId, skipApproval, env, model: modelProp, effort: effortProp }: AgentChatProps) {
-  const messagesEndRef = useRef<HTMLDivElement>(null)
-  const scrollContainerRef = useRef<HTMLDivElement>(null)
   const composerRef = useRef<HTMLTextAreaElement>(null)
-  // Track whether to auto-scroll. We check the position BEFORE new content
-  // renders, not after — otherwise scrollIntoView triggers onScroll which
-  // sets it back to true, defeating the purpose.
-  const shouldAutoScrollRef = useRef(true)
-  const prevMessageCountRef = useRef(0)
 
   const [model, setModel] = useState(modelProp ?? DEFAULT_MODEL)
   const [effort, setEffort] = useState(effortProp ?? '')
@@ -93,22 +87,8 @@ function AgentChatInner({ sessionId, cwd, sdkSessionId, skipApproval, env, model
     effort: (effort || undefined) as 'low' | 'medium' | 'high' | 'max' | undefined,
   })
 
-  // Before new messages render, snapshot whether we're at the bottom
   const messageCount = messages.length
-  if (messageCount !== prevMessageCountRef.current) {
-    const el = scrollContainerRef.current
-    if (el) {
-      shouldAutoScrollRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80
-    }
-    prevMessageCountRef.current = messageCount
-  }
-
-  // After render, scroll if we were at bottom
-  useEffect(() => {
-    if (shouldAutoScrollRef.current) {
-      messagesEndRef.current?.scrollIntoView()
-    }
-  }, [messageCount])
+  const { messagesEndRef, scrollContainerRef, showScrollButton, handleScrollToBottom, handleScroll } = useAutoScroll(messageCount)
 
   // Capture plan file path when ExitPlanMode is detected
   useEffect(() => {
@@ -146,7 +126,8 @@ function AgentChatInner({ sessionId, cwd, sdkSessionId, skipApproval, env, model
       {/* Messages area */}
       <div
         ref={scrollContainerRef}
-        className="flex-1 overflow-y-auto px-4 py-3"
+        onScroll={handleScroll}
+        className="relative flex-1 overflow-y-auto px-4 py-3"
       >
         {messages.length === 0 && !isRunning && <EmptyState hasSdkSession={hasSdkSession} />}
 
@@ -270,6 +251,14 @@ function AgentChatInner({ sessionId, cwd, sdkSessionId, skipApproval, env, model
         )}
 
         <div ref={messagesEndRef} />
+        {showScrollButton && (
+          <button
+            onClick={handleScrollToBottom}
+            className="sticky bottom-4 left-1/2 -translate-x-1/2 px-4 py-1.5 text-xs font-medium rounded-full bg-accent text-white hover:bg-accent/80 shadow-lg transition-colors z-10"
+          >
+            Go to End &#x2193;
+          </button>
+        )}
       </div>
 
       {/* Input area */}

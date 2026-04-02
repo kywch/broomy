@@ -102,7 +102,7 @@ export async function handleLoadHistory(
       const isToolUse = entryType === 'assistant'
         && Array.isArray(content)
         && content.length > 0
-        && content.every((b) => (b as Record<string, unknown>).type === 'tool_use')
+        && content.every((b) => b.type === 'tool_use')
 
       if (isToolUse && prevWasToolUse) {
         // Consecutive tool_use entries collapse together — don't increment
