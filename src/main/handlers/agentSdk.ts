@@ -188,6 +188,9 @@ async function runTurn(
     const errorMessage = err instanceof Error ? err.message : String(err)
     if (errorMessage.includes('aborted')) {
       // User cancelled — not an error
+    } else if (isStaleSessionError(errorMessage)) {
+      // Stale SDK session ID — re-throw so startTurn can retry without resume
+      throw err
     } else {
       console.error('[agentSdk] Stream error:', errorMessage)
       if (err instanceof Error && err.stack) console.error(err.stack)
@@ -282,6 +285,16 @@ function buildQueryOptions(
 }
 
 /**
+ * Detect errors caused by a stale/expired SDK session ID used for resume.
+ * These are retriable — the turn can be restarted without resume.
+ */
+function isStaleSessionError(message: string): boolean {
+  const lower = message.toLowerCase()
+  return lower.includes('no conversation found') ||
+    (lower.includes('session') && lower.includes('not found'))
+}
+
+/**
  * Start a turn: create a V1 query() and iterate its messages.
  * In fake-SDK mode (E2E_FAKE_SDK=true), uses createFakeQuery to validate
  * options without spawning a real subprocess.
@@ -302,34 +315,48 @@ async function startTurn(
   const queryOptions = buildQueryOptions(cwd, options, sessionId, win)
   console.log('[agentSdk] startTurn', sessionId, 'cwd:', cwd, 'resume:', options.sdkSessionId ?? 'none')
 
-  let q: SdkQuery
-  if (process.env.E2E_FAKE_SDK === 'true') {
-    q = createFakeQuery({ prompt, options: queryOptions })
-  } else {
-    const { query: sdkQuery } = await import('@anthropic-ai/claude-agent-sdk')
-    q = sdkQuery({ prompt, options: queryOptions }) as unknown as SdkQuery
-  }
-
-  // Reuse existing session entry (preserves sdkSessionId & initSent) or create new
-  let session = activeSessions.get(sessionId)
-  if (session) {
-    session.query = q
-    session.ownerWindow = win
-  } else {
-    session = {
-      query: q,
-      sdkSessionId: options.sdkSessionId,
-      ownerWindow: win,
-      pendingPermission: null,
-      initSent: false,
-    }
-    activeSessions.set(sessionId, session)
-  }
-
   try {
+    let q: SdkQuery
+    if (process.env.E2E_FAKE_SDK === 'true') {
+      q = createFakeQuery({ prompt, options: queryOptions })
+    } else {
+      const { query: sdkQuery } = await import('@anthropic-ai/claude-agent-sdk')
+      q = sdkQuery({ prompt, options: queryOptions }) as unknown as SdkQuery
+    }
+
+    // Reuse existing session entry (preserves sdkSessionId & initSent) or create new
+    let session = activeSessions.get(sessionId)
+    if (session) {
+      session.query = q
+      session.ownerWindow = win
+    } else {
+      session = {
+        query: q,
+        sdkSessionId: options.sdkSessionId,
+        ownerWindow: win,
+        pendingPermission: null,
+        initSent: false,
+      }
+      activeSessions.set(sessionId, session)
+    }
+
     await runTurn(sessionId, session, win)
   } catch (err: unknown) {
     const errorMessage = err instanceof Error ? err.message : String(err)
+
+    // If we were resuming a stale SDK session, clear it and retry fresh
+    if (options.sdkSessionId && isStaleSessionError(errorMessage)) {
+      console.log('[agentSdk] Stale SDK session — retrying without resume for', sessionId)
+      sendMsg(win, sessionId, {
+        id: nextMessageId(),
+        type: 'system',
+        timestamp: Date.now(),
+        text: 'Previous session expired — starting a new conversation.',
+      })
+      activeSessions.delete(sessionId)
+      return startTurn(sessionId, prompt, cwd, win, { ...options, sdkSessionId: undefined })
+    }
+
     console.error('[agentSdk] startTurn error:', errorMessage)
     if (err instanceof Error && err.stack) console.error(err.stack)
     win.webContents.send(`agentSdk:error:${sessionId}`, errorMessage)
