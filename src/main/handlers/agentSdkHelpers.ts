@@ -222,7 +222,7 @@ export async function handleFetchModels(agentEnv?: Record<string, string>): Prom
   })
 }
 
-export async function handleFetchCommands(agentEnv?: Record<string, string>): Promise<{ name: string; description: string }[]> {
+export async function handleFetchCommands(cwd?: string, agentEnv?: Record<string, string>): Promise<{ name: string; description: string }[]> {
   return withConfigDir(agentEnv, async () => {
     try {
       const { query: sdkQuery } = await import('@anthropic-ai/claude-agent-sdk')
@@ -230,6 +230,7 @@ export async function handleFetchCommands(agentEnv?: Record<string, string>): Pr
         prompt: '/cost',
         options: {
           pathToClaudeCodeExecutable: resolveAgentSdkCliPath(),
+          cwd: cwd || process.cwd(),
           env: process.env,
           tools: { type: 'preset', preset: 'claude_code' },
           settingSources: ['user', 'project'],

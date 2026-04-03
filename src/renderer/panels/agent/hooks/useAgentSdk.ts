@@ -53,10 +53,10 @@ export function useAgentSdk(options: UseAgentSdkOptions): UseAgentSdkReturn {
   const [availableCommands, setAvailableCommands] = useState<CommandInfo[]>([])
   const [historyMeta, setHistoryMeta] = useState<HistoryMeta | null>(null)
 
-  // Fetch available slash commands on mount
+  // Fetch available slash commands on mount and when cwd changes
   useEffect(() => {
-    void window.agentSdk.commands(env).then(setAvailableCommands)
-  }, [env])
+    void window.agentSdk.commands(cwd, env).then(setAvailableCommands)
+  }, [cwd, env])
 
   // Load message history from the SDK transcript on mount.
   const historyLoadedRef = useRef<string | null>(null)
