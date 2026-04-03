@@ -4,7 +4,7 @@
 import type { GitHubPrStatus } from '../../../../../preload/index'
 import type { BranchStatus, StatusChip } from '../../../../store/sessions'
 import type { NavigationTarget } from '../../../../shared/utils/fileNavigation'
-import { branchStatusBadge } from '../../../../features/git/explorerHelpers'
+import { branchStatusBadge, prStateBadge } from '../../../../features/git/explorerHelpers'
 import { DialogErrorBanner } from '../../../../shared/components/ErrorBanner'
 import { useRepoStore } from '../../../../store/repos'
 import { AuthSetupSection, isAuthError } from '../../../../shared/components/AuthSetupSection'
@@ -74,15 +74,30 @@ function PrStatusContent({
   const chipKey = statusChip ?? branchStatus
   const badge = chipKey ? branchStatusBadge[chipKey] : undefined
   const hasPrMetadata = prStatus?.number && prStatus.url
-  const isPrRelated = branchStatus === 'open' || branchStatus === 'merged' || branchStatus === 'closed'
-    || statusChip === 'feedback' || statusChip === 'failed'
 
-  if (hasPrMetadata && isPrRelated && badge) {
+  // Show PR link whenever we have metadata from gh, unless it's a stale MERGED/CLOSED
+  // PR on a branch that has moved on (new commits or uncommitted work).
+  // We derive the badge from the live PR state when branchStatus hasn't caught up yet
+  // (e.g. branchStatus is still 'pushed' or 'in-progress' because useGitPolling hasn't
+  // recomputed, or because the branch has commits ahead of remote).
+  const isStaleTerminalPr = hasPrMetadata &&
+    (prStatus.state === 'MERGED' || prStatus.state === 'CLOSED') &&
+    (branchStatus === 'in-progress' || branchStatus === 'pushed')
+  // When branchStatus is PR-aware (open/merged/closed/feedback/failed), use its badge.
+  // Otherwise the branch status hasn't caught up with the live PR data, so derive
+  // the badge directly from the PR state.
+  const isPrAwareBranch = branchStatus === 'open' || branchStatus === 'merged' || branchStatus === 'closed'
+    || statusChip === 'feedback' || statusChip === 'failed'
+  const prBadge = (isPrAwareBranch && badge) ? badge
+    : hasPrMetadata ? prStateBadge[prStatus.state]
+    : undefined
+
+  if (hasPrMetadata && !isStaleTerminalPr && prBadge) {
     return (
       <div className="flex flex-col gap-1">
         <div className="flex items-center gap-2">
-          <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${badge.classes}`}>
-            {badge.label}
+          <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${prBadge.classes}`}>
+            {prBadge.label}
           </span>
           <button
             onClick={() => onFileSelect
