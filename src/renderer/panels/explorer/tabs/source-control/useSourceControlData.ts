@@ -37,16 +37,8 @@ function usePrEffects(config: PrEffectsConfig) {
   const [hasPrLoadedOnce, setHasPrLoadedOnce] = useState(false)
   const [prRefreshKey, setPrRefreshKey] = useState(0)
 
-  // Listen for agent-finished events to re-check PR status
-  useEffect(() => {
-    const handler = () => {
-      if (directory) {
-        setPrRefreshKey(k => k + 1)
-      }
-    }
-    document.addEventListener('broomy:agent-finished', handler)
-    return () => document.removeEventListener('broomy:agent-finished', handler)
-  }, [directory])
+  // Agent-finished PR detection is handled by useGitPolling (always mounted)
+  // so it works even when the source control tab isn't open.
 
   // Fetch PR status, write access, checks, and feedback when source control is active
   useEffect(() => {
