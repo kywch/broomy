@@ -489,8 +489,8 @@ export function register(ipcMain: IpcMain, ctx: HandlerContext): void {
     await handleStatus(senderWindow, sessionId, session?.sdkSessionId, agentEnv)
   })
 
-  ipcMain.handle('agentSdk:commands', async (_event, agentEnv?: Record<string, string>) => {
-    return handleFetchCommands(agentEnv)
+  ipcMain.handle('agentSdk:commands', async (_event, cwd?: string, agentEnv?: Record<string, string>) => {
+    return handleFetchCommands(cwd, agentEnv)
   })
 
   ipcMain.handle('agentSdk:models', async (_event, agentEnv?: Record<string, string>): Promise<SdkModelInfo[]> => {
