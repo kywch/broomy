@@ -5,6 +5,16 @@
  * conversations.  First message triggers agentSdk:start; follow-ups use
  * agentSdk:send which creates a new query with resume — token-efficient,
  * no replayed history.
+ *
+ * ## Turn phase state machine
+ *
+ *   ┌─────┐  sendPrompt   ┌────────┐  onDone / onError   ┌──────┐
+ *   │ new │ ──(start())──▶ │ active │ ──────────────────▶  │ idle │
+ *   └─────┘                └────────┘                      └──────┘
+ *      ▲                       ▲  │                           │
+ *      │                       │  └──── sendPrompt (queues) ──┘
+ *      │                       └─────── sendPrompt (send()) ──┘
+ *      └──────────── stop ─── (any)
  */
 import { useEffect, useCallback, useRef, useState } from 'react'
 import { useAgentChatStore } from '../../../store/agentChat'
@@ -36,9 +46,30 @@ function addUserMessage(sessionId: string, text: string, queued?: boolean): void
   })
 }
 
+/**
+ * Resolve the SDK session ID to use for resume.
+ * Prefers the persisted value from the store; falls back to the prop.
+ * Returns undefined if neither has a non-empty value.
+ */
+function resolveResumeId(sessionId: string, sdkSessionIdProp?: string): string | undefined {
+  const stored = getStoredSdkSessionId(sessionId)
+  if (stored && stored.length > 0) return stored
+  if (sdkSessionIdProp && sdkSessionIdProp.length > 0) return sdkSessionIdProp
+  return undefined
+}
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
+
+/**
+ * Turn phase tracks the lifecycle of the agent session in the main process.
+ *
+ * - `new`:    No query created yet (or session was stopped). Next send uses start().
+ * - `idle`:   A query has completed. Next send uses send() (token-efficient resume).
+ * - `active`: A query is currently running. Sends are queued via inject().
+ */
+type TurnPhase = 'new' | 'idle' | 'active'
 
 interface UseAgentSdkOptions {
   sessionId: string
@@ -77,44 +108,42 @@ interface UseAgentSdkReturn {
 export function useAgentSdk(options: UseAgentSdkOptions): UseAgentSdkReturn {
   const { sessionId, cwd, sdkSessionId, permissionMode, env, model, effort } = options
 
-  // Lifecycle refs — track whether the agent turn is active and whether
-  // at least one query has been created in the main process.
-  const isRunningRef = useRef(false)
-  const hasStartedRef = useRef(false)
+  const phaseRef = useRef<TurnPhase>('new')
 
   const [availableCommands, setAvailableCommands] = useState<CommandInfo[]>([])
   const [historyMeta, setHistoryMeta] = useState<HistoryMeta | null>(null)
 
-  // --- History loading state ------------------------------------------------
-  // History messages from the SDK transcript are buffered into
-  // `historyBufferRef`, then atomically replace existing messages via
-  // `replaceMessages` once the load completes. If the load fails, existing
-  // messages are left untouched and the guard key is reset so the next
-  // mount/visit can retry.
+  // --- History loading ------------------------------------------------------
+  //
+  // History messages are buffered into `historyBufferRef` and atomically
+  // replace existing messages via `replaceMessages` when the load completes.
+  // If the load fails, existing messages are left untouched and the guard key
+  // is reset so the next mount/visit can retry.
+  //
+  // A generation counter (`loadGenRef`) ensures that if a second load starts
+  // while the first is in-flight, the first load's callbacks become no-ops.
+
   const historyLoadedRef = useRef<string | null>(null)
   const historyBufferRef = useRef<AgentSdkMessage[]>([])
   const isLoadingHistoryRef = useRef(false)
   const loadGenRef = useRef(0)
 
-  /** Shared logic for loading history from the SDK transcript. */
   const startHistoryLoad = useCallback((sdkId: string, limit?: number) => {
-    // Bump the generation so any in-flight load's callbacks become no-ops.
     const gen = ++loadGenRef.current
     historyBufferRef.current = []
     isLoadingHistoryRef.current = true
 
     window.agentSdk.loadHistory(sdkId, sessionId, env, limit)
       .then(() => {
-        if (loadGenRef.current !== gen) return // superseded by a newer load
+        if (loadGenRef.current !== gen) return
         useAgentChatStore.getState().replaceMessages(sessionId, historyBufferRef.current)
       })
       .catch(() => {
-        if (loadGenRef.current !== gen) return // superseded
-        // Load failed — keep existing messages, allow retry on next visit
+        if (loadGenRef.current !== gen) return
         historyLoadedRef.current = null
       })
       .finally(() => {
-        if (loadGenRef.current !== gen) return // superseded
+        if (loadGenRef.current !== gen) return
         isLoadingHistoryRef.current = false
         historyBufferRef.current = []
       })
@@ -122,12 +151,10 @@ export function useAgentSdk(options: UseAgentSdkOptions): UseAgentSdkReturn {
 
   // --- Effects --------------------------------------------------------------
 
-  // Fetch available slash commands on mount and when cwd changes
   useEffect(() => {
     void window.agentSdk.commands(cwd, env).then(setAvailableCommands)
   }, [cwd, env])
 
-  // Load message history from the SDK transcript on mount.
   useEffect(() => {
     const currentSdkId = getStoredSdkSessionId(sessionId) ?? sdkSessionId
     if (!currentSdkId || currentSdkId.length === 0) return
@@ -137,7 +164,6 @@ export function useAgentSdk(options: UseAgentSdkOptions): UseAgentSdkReturn {
     startHistoryLoad(currentSdkId)
   }, [sessionId, sdkSessionId, env, startHistoryLoad])
 
-  // Subscribe to IPC events from the main process.
   useEffect(() => {
     const cleanups: (() => void)[] = []
 
@@ -145,7 +171,6 @@ export function useAgentSdk(options: UseAgentSdkOptions): UseAgentSdkReturn {
       const isHistory = msg.id.startsWith('history-')
 
       if (isHistory && isLoadingHistoryRef.current) {
-        // Buffer history messages for atomic replacement when load completes
         historyBufferRef.current.push(msg)
       } else {
         useAgentChatStore.getState().addMessage(sessionId, msg)
@@ -160,7 +185,7 @@ export function useAgentSdk(options: UseAgentSdkOptions): UseAgentSdkReturn {
     }))
 
     cleanups.push(window.agentSdk.onDone(sessionId, (returnedSdkSessionId: string) => {
-      isRunningRef.current = false
+      phaseRef.current = 'idle'
       useAgentChatStore.getState().clearQueuedFlag(sessionId)
       useAgentChatStore.getState().setState(sessionId, 'idle')
       useSessionStore.getState().updateAgentMonitor(sessionId, { status: 'idle' })
@@ -170,10 +195,10 @@ export function useAgentSdk(options: UseAgentSdkOptions): UseAgentSdkReturn {
     }))
 
     cleanups.push(window.agentSdk.onError(sessionId, (error: string) => {
-      isRunningRef.current = false
-      // Do NOT clear sdkSessionId — errors are transient, the session is still
-      // resumable and clearing it permanently destroys the history link.
-      // Do NOT reset hasStartedRef — the session still exists in the main process.
+      // Transition to idle, NOT back to new — the session still exists in the
+      // main process and errors are transient (rate limits, timeouts, etc.).
+      // We intentionally preserve sdkSessionId to keep the history link.
+      phaseRef.current = 'idle'
       useAgentChatStore.getState().setError(sessionId, error)
       useAgentChatStore.getState().addMessage(sessionId, {
         id: `error-${String(Date.now())}`,
@@ -199,15 +224,13 @@ export function useAgentSdk(options: UseAgentSdkOptions): UseAgentSdkReturn {
 
   const queuePrompt = useCallback((prompt: string) => {
     const trimmed = prompt.trim()
-    if (!trimmed || !isRunningRef.current) return
+    if (!trimmed || phaseRef.current !== 'active') return
     addUserMessage(sessionId, trimmed, true)
-    // The main process guards against missing sdkSessionId / inactive sessions.
     void window.agentSdk.inject(sessionId, trimmed)
   }, [sessionId])
 
   const sendPrompt = useCallback((prompt: string) => {
-    if (isRunningRef.current) {
-      // Agent is still running (e.g. executing a tool) — queue instead of dropping
+    if (phaseRef.current === 'active') {
       queuePrompt(prompt)
       return
     }
@@ -217,7 +240,7 @@ export function useAgentSdk(options: UseAgentSdkOptions): UseAgentSdkReturn {
     // Intercept commands the SDK doesn't support
     if (trimmed === '/login') {
       addUserMessage(sessionId, trimmed)
-      isRunningRef.current = true
+      phaseRef.current = 'active'
       useAgentChatStore.getState().setState(sessionId, 'running')
       void window.agentSdk.login(sessionId)
       return
@@ -228,45 +251,37 @@ export function useAgentSdk(options: UseAgentSdkOptions): UseAgentSdkReturn {
       return
     }
 
-    isRunningRef.current = true
+    // Capture the phase before transitioning — determines start() vs send().
+    const wasNew = phaseRef.current === 'new'
+    phaseRef.current = 'active'
+
     useAgentChatStore.getState().setState(sessionId, 'running')
     useAgentChatStore.getState().setError(sessionId, null)
     useSessionStore.getState().updateAgentMonitor(sessionId, { status: 'working' })
-
     addUserMessage(sessionId, prompt)
 
-    if (hasStartedRef.current) {
-      // Session exists in main process — send creates a new query with resume.
-      // Pass cwd/env/permissionMode so if the main process lost the session
-      // (e.g. after hot reload), it can start a new one with correct params.
-      void window.agentSdk.send(sessionId, prompt, {
-        cwd, permissionMode, env, model, effort,
-        sdkSessionId: getStoredSdkSessionId(sessionId),
-      })
-    } else {
-      // First message — create a new query (with resume if we have a stored session)
-      const storedId = getStoredSdkSessionId(sessionId)
-      const resumeId = (storedId && storedId.length > 0)
-        ? storedId
-        : (sdkSessionId && sdkSessionId.length > 0 ? sdkSessionId : undefined)
-      hasStartedRef.current = true
+    if (wasNew) {
       void window.agentSdk.start({
         id: sessionId,
         prompt,
         cwd,
-        sdkSessionId: resumeId,
+        sdkSessionId: resolveResumeId(sessionId, sdkSessionId),
         permissionMode,
         env,
         model,
         effort,
+      })
+    } else {
+      void window.agentSdk.send(sessionId, prompt, {
+        cwd, permissionMode, env, model, effort,
+        sdkSessionId: getStoredSdkSessionId(sessionId),
       })
     }
   }, [sessionId, cwd, sdkSessionId, permissionMode, env, model, effort, queuePrompt])
 
   const stopAgent = useCallback(() => {
     void window.agentSdk.stop(sessionId)
-    isRunningRef.current = false
-    hasStartedRef.current = false
+    phaseRef.current = 'new'
     useAgentChatStore.getState().setState(sessionId, 'idle')
     useSessionStore.getState().updateAgentMonitor(sessionId, { status: 'idle' })
   }, [sessionId])
