@@ -38,7 +38,6 @@ interface HistoryMeta {
 
 interface UseAgentSdkReturn {
   sendPrompt: (prompt: string) => void
-  queuePrompt: (prompt: string) => void
   stopAgent: () => void
   respondToPermission: (toolUseId: string, allowed: boolean, updatedInput?: Record<string, unknown>) => void
   availableCommands: CommandInfo[]
@@ -50,6 +49,13 @@ export function useAgentSdk(options: UseAgentSdkOptions): UseAgentSdkReturn {
   const { sessionId, cwd, sdkSessionId, permissionMode, env, model, effort } = options
   const isRunningRef = useRef(false)
   const hasStartedRef = useRef(false)
+  // Messages queued while the agent is running, to be sent as a proper new
+  // turn when the current turn finishes.  We don't use the SDK's streamInput
+  // because it isn't reliably visible to the SDK — queued messages would be
+  // lost if the local store is ever refreshed from the SDK transcript.
+  const pendingQueueRef = useRef<string[]>([])
+  // Ref so the onDone handler (registered once) always calls the latest version
+  const sendNextQueuedRef = useRef<() => void>(() => {})
   const [availableCommands, setAvailableCommands] = useState<CommandInfo[]>([])
   const [historyMeta, setHistoryMeta] = useState<HistoryMeta | null>(null)
 
@@ -58,7 +64,10 @@ export function useAgentSdk(options: UseAgentSdkOptions): UseAgentSdkReturn {
     void window.agentSdk.commands(cwd, env).then(setAvailableCommands)
   }, [cwd, env])
 
-  // Load message history from the SDK transcript on mount.
+  // Load message history from the SDK transcript on mount only.
+  // This must NOT re-run when sdkSessionId changes later (e.g. after the
+  // first turn completes and onDone sets the id) because clearSession would
+  // destroy live messages — including any the user queued mid-turn.
   const historyLoadedRef = useRef<string | null>(null)
   useEffect(() => {
     const stored = useSessionStore.getState().sessions.find(s => s.id === sessionId)
@@ -69,7 +78,8 @@ export function useAgentSdk(options: UseAgentSdkOptions): UseAgentSdkReturn {
     historyLoadedRef.current = key
     useAgentChatStore.getState().clearSession(sessionId)
     void window.agentSdk.loadHistory(currentSdkId, sessionId, env)
-  }, [sessionId, sdkSessionId, env])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId])
 
   // Subscribe to IPC events
   useEffect(() => {
@@ -90,11 +100,17 @@ export function useAgentSdk(options: UseAgentSdkOptions): UseAgentSdkReturn {
 
     const unsubDone = window.agentSdk.onDone(sessionId, (returnedSdkSessionId: string) => {
       isRunningRef.current = false
-      useAgentChatStore.getState().clearQueuedFlag(sessionId)
-      useAgentChatStore.getState().setState(sessionId, 'idle')
-      useSessionStore.getState().updateAgentMonitor(sessionId, { status: 'idle' })
       if (returnedSdkSessionId && returnedSdkSessionId.length > 0) {
         useSessionStore.getState().setSdkSessionId(sessionId, returnedSdkSessionId)
+      }
+      // If the user queued messages while the agent was working, send the
+      // next one as a proper new turn now that the SDK is idle.
+      if (pendingQueueRef.current.length > 0) {
+        sendNextQueuedRef.current()
+      } else {
+        useAgentChatStore.getState().clearQueuedFlag(sessionId)
+        useAgentChatStore.getState().setState(sessionId, 'idle')
+        useSessionStore.getState().updateAgentMonitor(sessionId, { status: 'idle' })
       }
     })
     cleanups.push(unsubDone)
@@ -102,6 +118,7 @@ export function useAgentSdk(options: UseAgentSdkOptions): UseAgentSdkReturn {
     const unsubError = window.agentSdk.onError(sessionId, (error: string) => {
       isRunningRef.current = false
       hasStartedRef.current = false
+      pendingQueueRef.current = []
       useSessionStore.getState().setSdkSessionId(sessionId, '')
       useAgentChatStore.getState().setError(sessionId, error)
       useAgentChatStore.getState().addMessage(sessionId, {
@@ -129,28 +146,46 @@ export function useAgentSdk(options: UseAgentSdkOptions): UseAgentSdkReturn {
     }
   }, [sessionId])
 
+  // Send the next queued message as a proper new turn.  Called from onDone
+  // (via ref) after the current turn finishes so the SDK actually sees the message.
+  const sendNextQueued = useCallback(() => {
+    if (pendingQueueRef.current.length === 0) return
+    const next = pendingQueueRef.current.shift()!
+    // Clear the queued flag on the message we're about to send
+    useAgentChatStore.getState().clearQueuedFlag(sessionId)
+    isRunningRef.current = true
+    useAgentChatStore.getState().setState(sessionId, 'running')
+    useSessionStore.getState().updateAgentMonitor(sessionId, { status: 'working' })
+    void window.agentSdk.send(sessionId, next, { cwd, permissionMode, env, model, effort,
+      sdkSessionId: useSessionStore.getState().sessions.find(s => s.id === sessionId)?.sdkSessionId })
+  }, [sessionId, cwd, permissionMode, env, model, effort])
+  sendNextQueuedRef.current = sendNextQueued
+
+  // Queue a message to be sent after the current turn finishes.
+  // Only called from sendPrompt after it has verified isRunningRef === true.
   const queuePrompt = useCallback((prompt: string) => {
-    const trimmed = prompt.trim()
-    if (!trimmed || !isRunningRef.current) return
     useAgentChatStore.getState().addMessage(sessionId, {
       id: nextUserMsgId(),
       type: 'text',
       timestamp: Date.now(),
-      text: trimmed,
+      text: prompt,
       queued: true,
     })
-    // The main process guards against missing sdkSessionId / inactive sessions.
-    void window.agentSdk.inject(sessionId, trimmed)
+    pendingQueueRef.current.push(prompt)
   }, [sessionId])
 
+  // Single entry point for all user messages.  Uses isRunningRef (synchronous,
+  // always up-to-date) — never the React-rendered `isRunning` prop — to decide
+  // between queuing mid-turn and starting a new turn.
   const sendPrompt = useCallback((prompt: string) => {
+    const trimmed = prompt.trim()
+    if (!trimmed) return
+
     if (isRunningRef.current) {
-      // Agent is still running (e.g. executing a tool) — queue instead of dropping
-      queuePrompt(prompt)
+      // Agent is still running — queue as a mid-turn inject
+      queuePrompt(trimmed)
       return
     }
-
-    const trimmed = prompt.trim()
 
     // Intercept commands the SDK doesn't support
     if (trimmed === '/login') {
@@ -179,14 +214,14 @@ export function useAgentSdk(options: UseAgentSdkOptions): UseAgentSdkReturn {
       id: nextUserMsgId(),
       type: 'text',
       timestamp: Date.now(),
-      text: prompt,
+      text: trimmed,
     })
 
     if (hasStartedRef.current) {
       // Session exists in main process — send creates a new query with resume.
       // Pass cwd/env/permissionMode so if the main process lost the session
       // (e.g. after hot reload), it can start a new one with correct params.
-      void window.agentSdk.send(sessionId, prompt, { cwd, permissionMode, env, model, effort,
+      void window.agentSdk.send(sessionId, trimmed, { cwd, permissionMode, env, model, effort,
         sdkSessionId: useSessionStore.getState().sessions.find(s => s.id === sessionId)?.sdkSessionId })
     } else {
       // First message — create a new query (with resume if we have a stored session)
@@ -195,7 +230,7 @@ export function useAgentSdk(options: UseAgentSdkOptions): UseAgentSdkReturn {
       hasStartedRef.current = true
       void window.agentSdk.start({
         id: sessionId,
-        prompt,
+        prompt: trimmed,
         cwd,
         sdkSessionId: resumeId,
         permissionMode,
@@ -210,6 +245,7 @@ export function useAgentSdk(options: UseAgentSdkOptions): UseAgentSdkReturn {
     void window.agentSdk.stop(sessionId)
     isRunningRef.current = false
     hasStartedRef.current = false
+    pendingQueueRef.current = []
     useAgentChatStore.getState().setState(sessionId, 'idle')
     useSessionStore.getState().updateAgentMonitor(sessionId, { status: 'idle' })
   }, [sessionId])
@@ -232,5 +268,5 @@ export function useAgentSdk(options: UseAgentSdkOptions): UseAgentSdkReturn {
     }
   }, [sessionId, env])
 
-  return { sendPrompt, queuePrompt, stopAgent, respondToPermission, availableCommands, historyMeta, loadFullHistory }
+  return { sendPrompt, stopAgent, respondToPermission, availableCommands, historyMeta, loadFullHistory }
 }

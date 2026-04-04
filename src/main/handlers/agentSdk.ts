@@ -16,6 +16,14 @@ interface PendingPermission {
   resolve: (result: { behavior: 'allow' } | { behavior: 'deny'; message: string }) => void
 }
 
+interface TurnOptions {
+  cwd: string
+  permissionMode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'dontAsk'
+  env?: Record<string, string>
+  model?: string
+  effort?: 'low' | 'medium' | 'high' | 'max'
+}
+
 interface ActiveSession {
   query: SdkQuery | null
   sdkSessionId?: string
@@ -23,6 +31,8 @@ interface ActiveSession {
   pendingPermission: PendingPermission | null
   /** True after the first system init message has been forwarded to the renderer */
   initSent: boolean
+  /** Last-used turn options so inject can start a new turn if the query just finished */
+  lastTurnOptions?: TurnOptions
 }
 
 const activeSessions = new Map<string, ActiveSession>()
@@ -195,12 +205,17 @@ async function runTurn(
       activeSessions.delete(sessionId)
     }
   } finally {
-    // Turn is done — clear the query reference so subsequent sends create a new query
-    if (activeSessions.has(sessionId)) {
-      activeSessions.get(sessionId)!.query = null
+    // Turn is done — clear the query reference so subsequent sends create a new query.
+    // Only touch the session if our query is still the active one; a fallback startTurn
+    // from the inject handler may have replaced it with a newer query.
+    const current = activeSessions.get(sessionId)
+    const isStillActive = current?.query === q
+    if (current && isStillActive) {
+      current.query = null
     }
-    // If no result message was emitted (e.g. interrupted), still notify the renderer
-    if (!resultSent && activeSessions.has(sessionId)) {
+    // If no result message was emitted (e.g. interrupted), still notify the renderer —
+    // but only if our query wasn't superseded, to avoid a spurious done/idle flash.
+    if (!resultSent && isStillActive && activeSessions.has(sessionId)) {
       const sdkSessionId = session.sdkSessionId ?? ''
       win.webContents.send(`agentSdk:done:${sessionId}`, sdkSessionId)
     }
@@ -311,10 +326,18 @@ async function startTurn(
   }
 
   // Reuse existing session entry (preserves sdkSessionId & initSent) or create new
+  const turnOptions: TurnOptions = {
+    cwd,
+    permissionMode: options.permissionMode,
+    env: options.env,
+    model: options.model,
+    effort: options.effort,
+  }
   let session = activeSessions.get(sessionId)
   if (session) {
     session.query = q
     session.ownerWindow = win
+    session.lastTurnOptions = turnOptions
   } else {
     session = {
       query: q,
@@ -322,6 +345,7 @@ async function startTurn(
       ownerWindow: win,
       pendingPermission: null,
       initSent: false,
+      lastTurnOptions: turnOptions,
     }
     activeSessions.set(sessionId, session)
   }
@@ -420,14 +444,29 @@ export function register(ipcMain: IpcMain, ctx: HandlerContext): void {
   })
 
   // Inject a message mid-turn using streamInput on the running query.
+  // If the query just finished (race between runTurn completing and the
+  // renderer receiving the done event), fall back to starting a new turn
+  // so the message is never silently dropped.
   ipcMain.handle('agentSdk:inject', async (_event, id: string, prompt: string) => {
     const session = activeSessions.get(id)
-    if (!session?.query) {
-      console.warn('[agentSdk] inject: no active query for', id)
+    if (!session) {
+      console.warn('[agentSdk] inject: no session for', id)
       return
     }
-    if (!session.sdkSessionId) {
-      console.warn('[agentSdk] inject: sdkSessionId not yet known for', id)
+    if (!session.query || !session.sdkSessionId) {
+      // Query just completed or sdkSessionId not yet known — start a new
+      // turn so the message isn't lost.
+      console.log('[agentSdk] inject: no active query, starting new turn for', id)
+      const opts: TurnOptions = session.lastTurnOptions ?? { cwd: process.cwd() }
+      const senderWindow = session.ownerWindow ?? BrowserWindow.fromWebContents(_event.sender)
+      if (!senderWindow) return
+      void startTurn(id, prompt, opts.cwd, senderWindow, {
+        sdkSessionId: session.sdkSessionId,
+        permissionMode: opts.permissionMode,
+        env: opts.env,
+        model: opts.model,
+        effort: opts.effort,
+      })
       return
     }
     console.log('[agentSdk] inject: queuing mid-turn message for', id)
