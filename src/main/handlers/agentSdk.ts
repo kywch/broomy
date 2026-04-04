@@ -8,7 +8,7 @@ import type { AgentSdkPermissionRequest } from '../../shared/agentSdkTypes'
 import {
   expandHome, nextMessageId, sendMsg, resolveAgentSdkCliPath,
   handleLoadHistory, handleStatus, handleFetchCommands, handleFetchModels, handleLogin,
-  createFakeQuery, sendMockAgentResponse,
+  createFakeQuery, sendMockAgentResponse, isSessionNotFoundError,
   type SdkModelInfo, type SdkQuery,
 } from './agentSdkHelpers'
 
@@ -16,12 +16,16 @@ interface PendingPermission {
   resolve: (result: { behavior: 'allow' } | { behavior: 'deny'; message: string }) => void
 }
 
-interface TurnOptions {
-  cwd: string
-  permissionMode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'dontAsk'
-  env?: Record<string, string>
-  model?: string
-  effort?: 'low' | 'medium' | 'high' | 'max'
+/**
+ * Thrown when a resume attempt fails because the SDK session no longer exists.
+ * Caught by startTurn to retry without resume, rather than surfacing the error
+ * to the renderer — which would leave the user stuck in a loop.
+ */
+class ResumeFailedError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'ResumeFailedError'
+  }
 }
 
 interface ActiveSession {
@@ -31,8 +35,6 @@ interface ActiveSession {
   pendingPermission: PendingPermission | null
   /** True after the first system init message has been forwarded to the renderer */
   initSent: boolean
-  /** Last-used turn options so inject can start a new turn if the query just finished */
-  lastTurnOptions?: TurnOptions
 }
 
 const activeSessions = new Map<string, ActiveSession>()
@@ -198,6 +200,12 @@ async function runTurn(
     const errorMessage = err instanceof Error ? err.message : String(err)
     if (errorMessage.includes('aborted')) {
       // User cancelled — not an error
+    } else if (session.sdkSessionId && isSessionNotFoundError(errorMessage)) {
+      // Resume failed because the SDK session no longer exists — let startTurn
+      // retry without resume rather than sending an error to the renderer.
+      console.warn('[agentSdk] Session not found for resume:', session.sdkSessionId)
+      activeSessions.delete(sessionId)
+      throw new ResumeFailedError(errorMessage)
     } else {
       console.error('[agentSdk] Stream error:', errorMessage)
       if (err instanceof Error && err.stack) console.error(err.stack)
@@ -206,8 +214,8 @@ async function runTurn(
     }
   } finally {
     // Turn is done — clear the query reference so subsequent sends create a new query.
-    // Only touch the session if our query is still the active one; a fallback startTurn
-    // from the inject handler may have replaced it with a newer query.
+    // Only touch the session if our query is still the active one; another startTurn
+    // may have replaced it with a newer query.
     const current = activeSessions.get(sessionId)
     const isStillActive = current?.query === q
     if (current && isStillActive) {
@@ -321,23 +329,25 @@ async function startTurn(
   if (process.env.E2E_FAKE_SDK === 'true') {
     q = createFakeQuery({ prompt, options: queryOptions })
   } else {
-    const { query: sdkQuery } = await import('@anthropic-ai/claude-agent-sdk')
-    q = sdkQuery({ prompt, options: queryOptions }) as unknown as SdkQuery
+    try {
+      const { query: sdkQuery } = await import('@anthropic-ai/claude-agent-sdk')
+      q = sdkQuery({ prompt, options: queryOptions }) as unknown as SdkQuery
+    } catch (err: unknown) {
+      // If query construction fails due to invalid session, retry without resume
+      const msg = err instanceof Error ? err.message : String(err)
+      if (options.sdkSessionId && isSessionNotFoundError(msg)) {
+        console.warn('[agentSdk] Session not found at construction, retrying without resume')
+        return startTurn(sessionId, prompt, cwd, win, { ...options, sdkSessionId: undefined })
+      }
+      throw err
+    }
   }
 
   // Reuse existing session entry (preserves sdkSessionId & initSent) or create new
-  const turnOptions: TurnOptions = {
-    cwd,
-    permissionMode: options.permissionMode,
-    env: options.env,
-    model: options.model,
-    effort: options.effort,
-  }
   let session = activeSessions.get(sessionId)
   if (session) {
     session.query = q
     session.ownerWindow = win
-    session.lastTurnOptions = turnOptions
   } else {
     session = {
       query: q,
@@ -345,7 +355,6 @@ async function startTurn(
       ownerWindow: win,
       pendingPermission: null,
       initSent: false,
-      lastTurnOptions: turnOptions,
     }
     activeSessions.set(sessionId, session)
   }
@@ -353,6 +362,11 @@ async function startTurn(
   try {
     await runTurn(sessionId, session, win)
   } catch (err: unknown) {
+    // If resume failed during iteration, retry the whole turn without resume
+    if (err instanceof ResumeFailedError && options.sdkSessionId) {
+      console.log('[agentSdk] Retrying without resume after session-not-found')
+      return startTurn(sessionId, prompt, cwd, win, { ...options, sdkSessionId: undefined })
+    }
     const errorMessage = err instanceof Error ? err.message : String(err)
     console.error('[agentSdk] startTurn error:', errorMessage)
     if (err instanceof Error && err.stack) console.error(err.stack)
@@ -444,27 +458,14 @@ export function register(ipcMain: IpcMain, ctx: HandlerContext): void {
   })
 
   // Inject a message mid-turn using streamInput on the running query.
-  // If the query just finished (race between runTurn completing and the
-  // renderer receiving the done event), fall back to starting a new turn
-  // so the message is never silently dropped.
   ipcMain.handle('agentSdk:inject', async (_event, id: string, prompt: string) => {
     const session = activeSessions.get(id)
-    if (!session) {
-      console.warn('[agentSdk] inject: no session for', id)
+    if (!session?.query) {
+      console.warn('[agentSdk] inject: no active query for', id)
       return
     }
-    if (!session.query || !session.sdkSessionId) {
-      // Query just completed or sdkSessionId not yet known — start a new
-      // turn so the message isn't lost.
-      console.log('[agentSdk] inject: no active query, starting new turn for', id)
-      const opts: TurnOptions = session.lastTurnOptions ?? { cwd: process.cwd() }
-      void startTurn(id, prompt, opts.cwd, session.ownerWindow, {
-        sdkSessionId: session.sdkSessionId,
-        permissionMode: opts.permissionMode,
-        env: opts.env,
-        model: opts.model,
-        effort: opts.effort,
-      })
+    if (!session.sdkSessionId) {
+      console.warn('[agentSdk] inject: sdkSessionId not yet known for', id)
       return
     }
     console.log('[agentSdk] inject: queuing mid-turn message for', id)
@@ -506,11 +507,8 @@ export function register(ipcMain: IpcMain, ctx: HandlerContext): void {
     if (ctx.isE2ETest || !sdkSessionId || sdkSessionId.length === 0) return
     const senderWindow = BrowserWindow.fromWebContents(_event.sender)
     if (!senderWindow) return
-    try {
-      await handleLoadHistory(senderWindow, sdkSessionId, sessionId, agentEnv, limit)
-    } catch (err) {
-      console.warn('[agentSdk] Failed to load history:', err instanceof Error ? err.message : err)
-    }
+    // Let errors propagate to the renderer so it can preserve existing messages
+    await handleLoadHistory(senderWindow, sdkSessionId, sessionId, agentEnv, limit)
   })
 
   ipcMain.handle('agentSdk:login', (_event, sessionId: string) => {
