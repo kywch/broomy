@@ -337,6 +337,12 @@ async function startTurn(
       const msg = err instanceof Error ? err.message : String(err)
       if (options.sdkSessionId && isSessionNotFoundError(msg)) {
         console.warn('[agentSdk] Session not found at construction, retrying without resume')
+        sendMsg(win, sessionId, {
+          id: nextMessageId(),
+          type: 'system',
+          timestamp: Date.now(),
+          text: 'Previous session expired — starting a new conversation.',
+        })
         return startTurn(sessionId, prompt, cwd, win, { ...options, sdkSessionId: undefined })
       }
       throw err
@@ -365,8 +371,15 @@ async function startTurn(
     // If resume failed during iteration, retry the whole turn without resume
     if (err instanceof ResumeFailedError && options.sdkSessionId) {
       console.log('[agentSdk] Retrying without resume after session-not-found')
+      sendMsg(win, sessionId, {
+        id: nextMessageId(),
+        type: 'system',
+        timestamp: Date.now(),
+        text: 'Previous session expired — starting a new conversation.',
+      })
       return startTurn(sessionId, prompt, cwd, win, { ...options, sdkSessionId: undefined })
     }
+
     const errorMessage = err instanceof Error ? err.message : String(err)
     console.error('[agentSdk] startTurn error:', errorMessage)
     if (err instanceof Error && err.stack) console.error(err.stack)
