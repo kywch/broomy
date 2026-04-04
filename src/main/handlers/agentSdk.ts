@@ -213,12 +213,17 @@ async function runTurn(
       activeSessions.delete(sessionId)
     }
   } finally {
-    // Turn is done — clear the query reference so subsequent sends create a new query
-    if (activeSessions.has(sessionId)) {
-      activeSessions.get(sessionId)!.query = null
+    // Turn is done — clear the query reference so subsequent sends create a new query.
+    // Only touch the session if our query is still the active one; another startTurn
+    // may have replaced it with a newer query.
+    const current = activeSessions.get(sessionId)
+    const isStillActive = current?.query === q
+    if (current && isStillActive) {
+      current.query = null
     }
-    // If no result message was emitted (e.g. interrupted), still notify the renderer
-    if (!resultSent && activeSessions.has(sessionId)) {
+    // If no result message was emitted (e.g. interrupted), still notify the renderer —
+    // but only if our query wasn't superseded, to avoid a spurious done/idle flash.
+    if (!resultSent && isStillActive && activeSessions.has(sessionId)) {
       const sdkSessionId = session.sdkSessionId ?? ''
       win.webContents.send(`agentSdk:done:${sessionId}`, sdkSessionId)
     }

@@ -332,15 +332,24 @@ describe('useAgentSdk', () => {
       expect(vi.mocked(window.agentSdk.send)).toHaveBeenCalledTimes(1)
     })
 
-    it('queues when agent is running', () => {
+    it('queues when agent is running and sends on done', () => {
       vi.mocked(window.agentSdk.loadHistory).mockResolvedValue(undefined)
       const { result } = renderHook(() => useAgentSdk(defaultHookOptions))
 
       act(() => { result.current.sendPrompt('first') })
-      // Agent is now running — second message should be queued
+      // Agent is now running — second message should be queued locally (not injected)
       act(() => { result.current.sendPrompt('queued msg') })
 
-      expect(vi.mocked(window.agentSdk.inject)).toHaveBeenCalledWith('session-1', 'queued msg')
+      expect(vi.mocked(window.agentSdk.inject)).not.toHaveBeenCalled()
+      // Message should be in the store with queued flag
+      const msgs = useAgentChatStore.getState().getSession('session-1').messages
+      expect(msgs.some(m => m.text === 'queued msg' && m.queued)).toBe(true)
+
+      // When the turn finishes, the queued message should be sent as a new turn
+      act(() => { doneCb('sdk-id-1') })
+      expect(vi.mocked(window.agentSdk.send)).toHaveBeenCalledWith(
+        'session-1', 'queued msg', expect.objectContaining({ cwd: '/test' }),
+      )
     })
   })
 

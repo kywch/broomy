@@ -93,7 +93,6 @@ interface HistoryMeta {
 
 interface UseAgentSdkReturn {
   sendPrompt: (prompt: string) => void
-  queuePrompt: (prompt: string) => void
   stopAgent: () => void
   respondToPermission: (toolUseId: string, allowed: boolean, updatedInput?: Record<string, unknown>) => void
   availableCommands: CommandInfo[]
@@ -109,6 +108,14 @@ export function useAgentSdk(options: UseAgentSdkOptions): UseAgentSdkReturn {
   const { sessionId, cwd, sdkSessionId, permissionMode, env, model, effort } = options
 
   const phaseRef = useRef<TurnPhase>('new')
+
+  // Messages queued while the agent is running, sent as a proper new turn
+  // when the current turn finishes.  We don't use the SDK's streamInput
+  // because it isn't reliably visible to the SDK — queued messages would be
+  // lost if the local store is ever refreshed from the SDK transcript.
+  const pendingQueueRef = useRef<string[]>([])
+  // Ref so the onDone handler (registered once) always calls the latest version
+  const sendNextQueuedRef = useRef<() => void>(() => {})
 
   const [availableCommands, setAvailableCommands] = useState<CommandInfo[]>([])
   const [historyMeta, setHistoryMeta] = useState<HistoryMeta | null>(null)
@@ -186,11 +193,17 @@ export function useAgentSdk(options: UseAgentSdkOptions): UseAgentSdkReturn {
 
     cleanups.push(window.agentSdk.onDone(sessionId, (returnedSdkSessionId: string) => {
       phaseRef.current = 'idle'
-      useAgentChatStore.getState().clearQueuedFlag(sessionId)
-      useAgentChatStore.getState().setState(sessionId, 'idle')
-      useSessionStore.getState().updateAgentMonitor(sessionId, { status: 'idle' })
       if (returnedSdkSessionId && returnedSdkSessionId.length > 0) {
         useSessionStore.getState().setSdkSessionId(sessionId, returnedSdkSessionId)
+      }
+      // If the user queued messages while the agent was working, send the
+      // next one as a proper new turn now that the SDK is idle.
+      if (pendingQueueRef.current.length > 0) {
+        sendNextQueuedRef.current()
+      } else {
+        useAgentChatStore.getState().clearQueuedFlag(sessionId)
+        useAgentChatStore.getState().setState(sessionId, 'idle')
+        useSessionStore.getState().updateAgentMonitor(sessionId, { status: 'idle' })
       }
     }))
 
@@ -199,6 +212,7 @@ export function useAgentSdk(options: UseAgentSdkOptions): UseAgentSdkReturn {
       // main process and errors are transient (rate limits, timeouts, etc.).
       // We intentionally preserve sdkSessionId to keep the history link.
       phaseRef.current = 'idle'
+      pendingQueueRef.current = []
       useAgentChatStore.getState().setError(sessionId, error)
       useAgentChatStore.getState().addMessage(sessionId, {
         id: `error-${String(Date.now())}`,
@@ -222,13 +236,32 @@ export function useAgentSdk(options: UseAgentSdkOptions): UseAgentSdkReturn {
 
   // --- Actions --------------------------------------------------------------
 
+  // Send the next queued message as a proper new turn.  Called from onDone
+  // (via ref) after the current turn finishes so the SDK actually sees it.
+  const sendNextQueued = useCallback(() => {
+    if (pendingQueueRef.current.length === 0) return
+    const next = pendingQueueRef.current.shift()!
+    useAgentChatStore.getState().clearQueuedFlag(sessionId)
+    phaseRef.current = 'active'
+    useAgentChatStore.getState().setState(sessionId, 'running')
+    useSessionStore.getState().updateAgentMonitor(sessionId, { status: 'working' })
+    void window.agentSdk.send(sessionId, next, {
+      cwd, permissionMode, env, model, effort,
+      sdkSessionId: getStoredSdkSessionId(sessionId),
+    })
+  }, [sessionId, cwd, permissionMode, env, model, effort])
+  sendNextQueuedRef.current = sendNextQueued
+
+  // Queue a message to be sent after the current turn finishes.
+  // Only called from sendPrompt when phaseRef is 'active'.
   const queuePrompt = useCallback((prompt: string) => {
     const trimmed = prompt.trim()
-    if (!trimmed || phaseRef.current !== 'active') return
+    if (!trimmed) return
     addUserMessage(sessionId, trimmed, true)
-    void window.agentSdk.inject(sessionId, trimmed)
+    pendingQueueRef.current.push(trimmed)
   }, [sessionId])
 
+  // Single entry point for all user messages.
   const sendPrompt = useCallback((prompt: string) => {
     if (phaseRef.current === 'active') {
       queuePrompt(prompt)
@@ -284,6 +317,7 @@ export function useAgentSdk(options: UseAgentSdkOptions): UseAgentSdkReturn {
   const stopAgent = useCallback(() => {
     void window.agentSdk.stop(sessionId)
     phaseRef.current = 'new'
+    pendingQueueRef.current = []
     useAgentChatStore.getState().setState(sessionId, 'idle')
     useSessionStore.getState().updateAgentMonitor(sessionId, { status: 'idle' })
   }, [sessionId])
@@ -304,5 +338,5 @@ export function useAgentSdk(options: UseAgentSdkOptions): UseAgentSdkReturn {
     }
   }, [sessionId, startHistoryLoad])
 
-  return { sendPrompt, queuePrompt, stopAgent, respondToPermission, availableCommands, historyMeta, loadFullHistory }
+  return { sendPrompt, stopAgent, respondToPermission, availableCommands, historyMeta, loadFullHistory }
 }
