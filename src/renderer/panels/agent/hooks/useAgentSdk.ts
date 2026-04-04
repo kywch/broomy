@@ -272,6 +272,8 @@ export function useAgentSdk(options: UseAgentSdkOptions): UseAgentSdkReturn {
         effort,
       })
     } else {
+      // Use getStoredSdkSessionId (not resolveResumeId) — the send() path only
+      // fires after a session has been started, so the prop fallback is unnecessary.
       void window.agentSdk.send(sessionId, prompt, {
         cwd, permissionMode, env, model, effort,
         sdkSessionId: getStoredSdkSessionId(sessionId),

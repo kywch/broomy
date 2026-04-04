@@ -130,7 +130,7 @@ describe('useAgentSdk', () => {
       expect(chatSession.error).toBe('Something broke')
     })
 
-    it('preserves hasStarted — sendPrompt uses send() not start() after error', () => {
+    it('error transitions to idle — sendPrompt uses send() not start() after error', () => {
       vi.mocked(window.agentSdk.loadHistory).mockResolvedValue(undefined)
       const { result } = renderHook(() => useAgentSdk(defaultHookOptions))
 

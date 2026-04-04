@@ -8,7 +8,7 @@ import type { AgentSdkPermissionRequest } from '../../shared/agentSdkTypes'
 import {
   expandHome, nextMessageId, sendMsg, resolveAgentSdkCliPath,
   handleLoadHistory, handleStatus, handleFetchCommands, handleFetchModels, handleLogin,
-  createFakeQuery, sendMockAgentResponse,
+  createFakeQuery, sendMockAgentResponse, isSessionNotFoundError,
   type SdkModelInfo, type SdkQuery,
 } from './agentSdkHelpers'
 
@@ -26,12 +26,6 @@ class ResumeFailedError extends Error {
     super(message)
     this.name = 'ResumeFailedError'
   }
-}
-
-/** Check if an error message indicates the SDK session no longer exists. */
-function isSessionNotFoundError(message: string): boolean {
-  const lower = message.toLowerCase()
-  return lower.includes('no conversation found') || lower.includes('session not found')
 }
 
 interface ActiveSession {
