@@ -78,7 +78,6 @@ export function useAgentSdk(options: UseAgentSdkOptions): UseAgentSdkReturn {
     historyLoadedRef.current = key
     useAgentChatStore.getState().clearSession(sessionId)
     void window.agentSdk.loadHistory(currentSdkId, sessionId, env)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId])
 
   // Subscribe to IPC events

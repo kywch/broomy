@@ -458,9 +458,7 @@ export function register(ipcMain: IpcMain, ctx: HandlerContext): void {
       // turn so the message isn't lost.
       console.log('[agentSdk] inject: no active query, starting new turn for', id)
       const opts: TurnOptions = session.lastTurnOptions ?? { cwd: process.cwd() }
-      const senderWindow = session.ownerWindow ?? BrowserWindow.fromWebContents(_event.sender)
-      if (!senderWindow) return
-      void startTurn(id, prompt, opts.cwd, senderWindow, {
+      void startTurn(id, prompt, opts.cwd, session.ownerWindow, {
         sdkSessionId: session.sdkSessionId,
         permissionMode: opts.permissionMode,
         env: opts.env,
