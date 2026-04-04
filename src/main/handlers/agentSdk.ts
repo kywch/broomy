@@ -8,12 +8,24 @@ import type { AgentSdkPermissionRequest } from '../../shared/agentSdkTypes'
 import {
   expandHome, nextMessageId, sendMsg, resolveAgentSdkCliPath,
   handleLoadHistory, handleStatus, handleFetchCommands, handleFetchModels, handleLogin,
-  createFakeQuery, sendMockAgentResponse,
+  createFakeQuery, sendMockAgentResponse, isSessionNotFoundError,
   type SdkModelInfo, type SdkQuery,
 } from './agentSdkHelpers'
 
 interface PendingPermission {
   resolve: (result: { behavior: 'allow' } | { behavior: 'deny'; message: string }) => void
+}
+
+/**
+ * Thrown when a resume attempt fails because the SDK session no longer exists.
+ * Caught by startTurn to retry without resume, rather than surfacing the error
+ * to the renderer — which would leave the user stuck in a loop.
+ */
+class ResumeFailedError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'ResumeFailedError'
+  }
 }
 
 interface ActiveSession {
@@ -188,9 +200,12 @@ async function runTurn(
     const errorMessage = err instanceof Error ? err.message : String(err)
     if (errorMessage.includes('aborted')) {
       // User cancelled — not an error
-    } else if (isStaleSessionError(errorMessage)) {
-      // Stale SDK session ID — re-throw so startTurn can retry without resume
-      throw err
+    } else if (session.sdkSessionId && isSessionNotFoundError(errorMessage)) {
+      // Resume failed because the SDK session no longer exists — let startTurn
+      // retry without resume rather than sending an error to the renderer.
+      console.warn('[agentSdk] Session not found for resume:', session.sdkSessionId)
+      activeSessions.delete(sessionId)
+      throw new ResumeFailedError(errorMessage)
     } else {
       console.error('[agentSdk] Stream error:', errorMessage)
       if (err instanceof Error && err.stack) console.error(err.stack)
@@ -198,12 +213,17 @@ async function runTurn(
       activeSessions.delete(sessionId)
     }
   } finally {
-    // Turn is done — clear the query reference so subsequent sends create a new query
-    if (activeSessions.has(sessionId)) {
-      activeSessions.get(sessionId)!.query = null
+    // Turn is done — clear the query reference so subsequent sends create a new query.
+    // Only touch the session if our query is still the active one; another startTurn
+    // may have replaced it with a newer query.
+    const current = activeSessions.get(sessionId)
+    const isStillActive = current?.query === q
+    if (current && isStillActive) {
+      current.query = null
     }
-    // If no result message was emitted (e.g. interrupted), still notify the renderer
-    if (!resultSent && activeSessions.has(sessionId)) {
+    // If no result message was emitted (e.g. interrupted), still notify the renderer —
+    // but only if our query wasn't superseded, to avoid a spurious done/idle flash.
+    if (!resultSent && isStillActive && activeSessions.has(sessionId)) {
       const sdkSessionId = session.sdkSessionId ?? ''
       win.webContents.send(`agentSdk:done:${sessionId}`, sdkSessionId)
     }
@@ -285,16 +305,6 @@ function buildQueryOptions(
 }
 
 /**
- * Detect errors caused by a stale/expired SDK session ID used for resume.
- * These are retriable — the turn can be restarted without resume.
- */
-function isStaleSessionError(message: string): boolean {
-  const lower = message.toLowerCase()
-  return lower.includes('no conversation found') ||
-    (lower.includes('session') && lower.includes('not found'))
-}
-
-/**
  * Start a turn: create a V1 query() and iterate its messages.
  * In fake-SDK mode (E2E_FAKE_SDK=true), uses createFakeQuery to validate
  * options without spawning a real subprocess.
@@ -315,48 +325,62 @@ async function startTurn(
   const queryOptions = buildQueryOptions(cwd, options, sessionId, win)
   console.log('[agentSdk] startTurn', sessionId, 'cwd:', cwd, 'resume:', options.sdkSessionId ?? 'none')
 
-  try {
-    let q: SdkQuery
-    if (process.env.E2E_FAKE_SDK === 'true') {
-      q = createFakeQuery({ prompt, options: queryOptions })
-    } else {
+  let q: SdkQuery
+  if (process.env.E2E_FAKE_SDK === 'true') {
+    q = createFakeQuery({ prompt, options: queryOptions })
+  } else {
+    try {
       const { query: sdkQuery } = await import('@anthropic-ai/claude-agent-sdk')
       q = sdkQuery({ prompt, options: queryOptions }) as unknown as SdkQuery
-    }
-
-    // Reuse existing session entry (preserves sdkSessionId & initSent) or create new
-    let session = activeSessions.get(sessionId)
-    if (session) {
-      session.query = q
-      session.ownerWindow = win
-    } else {
-      session = {
-        query: q,
-        sdkSessionId: options.sdkSessionId,
-        ownerWindow: win,
-        pendingPermission: null,
-        initSent: false,
+    } catch (err: unknown) {
+      // If query construction fails due to invalid session, retry without resume
+      const msg = err instanceof Error ? err.message : String(err)
+      if (options.sdkSessionId && isSessionNotFoundError(msg)) {
+        console.warn('[agentSdk] Session not found at construction, retrying without resume')
+        sendMsg(win, sessionId, {
+          id: nextMessageId(),
+          type: 'system',
+          timestamp: Date.now(),
+          text: 'Previous session expired — starting a new conversation.',
+        })
+        return startTurn(sessionId, prompt, cwd, win, { ...options, sdkSessionId: undefined })
       }
-      activeSessions.set(sessionId, session)
+      throw err
     }
+  }
 
+  // Reuse existing session entry (preserves sdkSessionId & initSent) or create new
+  let session = activeSessions.get(sessionId)
+  if (session) {
+    session.query = q
+    session.ownerWindow = win
+  } else {
+    session = {
+      query: q,
+      sdkSessionId: options.sdkSessionId,
+      ownerWindow: win,
+      pendingPermission: null,
+      initSent: false,
+    }
+    activeSessions.set(sessionId, session)
+  }
+
+  try {
     await runTurn(sessionId, session, win)
   } catch (err: unknown) {
-    const errorMessage = err instanceof Error ? err.message : String(err)
-
-    // If we were resuming a stale SDK session, clear it and retry fresh
-    if (options.sdkSessionId && isStaleSessionError(errorMessage)) {
-      console.log('[agentSdk] Stale SDK session — retrying without resume for', sessionId)
+    // If resume failed during iteration, retry the whole turn without resume
+    if (err instanceof ResumeFailedError && options.sdkSessionId) {
+      console.log('[agentSdk] Retrying without resume after session-not-found')
       sendMsg(win, sessionId, {
         id: nextMessageId(),
         type: 'system',
         timestamp: Date.now(),
         text: 'Previous session expired — starting a new conversation.',
       })
-      activeSessions.delete(sessionId)
       return startTurn(sessionId, prompt, cwd, win, { ...options, sdkSessionId: undefined })
     }
 
+    const errorMessage = err instanceof Error ? err.message : String(err)
     console.error('[agentSdk] startTurn error:', errorMessage)
     if (err instanceof Error && err.stack) console.error(err.stack)
     win.webContents.send(`agentSdk:error:${sessionId}`, errorMessage)
@@ -496,11 +520,8 @@ export function register(ipcMain: IpcMain, ctx: HandlerContext): void {
     if (ctx.isE2ETest || !sdkSessionId || sdkSessionId.length === 0) return
     const senderWindow = BrowserWindow.fromWebContents(_event.sender)
     if (!senderWindow) return
-    try {
-      await handleLoadHistory(senderWindow, sdkSessionId, sessionId, agentEnv, limit)
-    } catch (err) {
-      console.warn('[agentSdk] Failed to load history:', err instanceof Error ? err.message : err)
-    }
+    // Let errors propagate to the renderer so it can preserve existing messages
+    await handleLoadHistory(senderWindow, sdkSessionId, sessionId, agentEnv, limit)
   })
 
   ipcMain.handle('agentSdk:login', (_event, sessionId: string) => {
