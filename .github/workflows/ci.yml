@@ -67,7 +67,7 @@ jobs:
   e2e:
     name: E2E tests
     runs-on: ubuntu-22.04
-    timeout-minutes: 30
+    timeout-minutes: 45
     env:
       # Tells tests/electron-launch-args.ts to pass --no-sandbox --disable-gpu,
       # which Electron needs to run reliably on a headless CI runner.
@@ -108,7 +108,10 @@ jobs:
       # failures easier to diagnose.
       - run: node node_modules/electron/install.js
       - name: Run E2E tests
-        run: xvfb-run --auto-servernum -- pnpm test:e2e:built
+        # --reporter=list streams per-test progress; the config default is
+        # 'html' which buffers everything until the end, making hangs look
+        # identical to "still running" in CI logs.
+        run: xvfb-run --auto-servernum -- npx playwright test --reporter=list
       - name: Upload Playwright report on failure
         if: failure()
         uses: actions/upload-artifact@v4
