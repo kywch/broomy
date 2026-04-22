@@ -67,7 +67,7 @@ jobs:
   e2e:
     name: E2E tests
     runs-on: ubuntu-22.04
-    timeout-minutes: 45
+    timeout-minutes: 30
     env:
       # Tells tests/electron-launch-args.ts to pass --no-sandbox --disable-gpu,
       # which Electron needs to run reliably on a headless CI runner.
@@ -108,10 +108,18 @@ jobs:
       # failures easier to diagnose.
       - run: node node_modules/electron/install.js
       - name: Run E2E tests
-        # --reporter=list streams per-test progress; the config default is
-        # 'html' which buffers everything until the end, making hangs look
-        # identical to "still running" in CI logs.
-        run: xvfb-run --auto-servernum -- npx playwright test --reporter=list
+        # --reporter=list streams per-test progress (config default 'html'
+        # buffers everything, making hangs look identical to "still running").
+        # --retries=0 overrides playwright.config.ts's CI retries=2 — on first
+        # pass we want real failures, not 3x runtime amplification.
+        # --max-failures=5 stops the suite once 5 tests fail, so a broken
+        # baseline can't burn the whole time budget.
+        # `timeout 20m` sends SIGTERM before the job timeout hits, giving
+        # playwright a chance to write out a report.
+        run: |
+          timeout --signal=TERM --kill-after=30s 20m \
+            xvfb-run --auto-servernum -- \
+            npx playwright test --reporter=list --retries=0 --max-failures=5
       - name: Upload Playwright report on failure
         if: failure()
         uses: actions/upload-artifact@v4
